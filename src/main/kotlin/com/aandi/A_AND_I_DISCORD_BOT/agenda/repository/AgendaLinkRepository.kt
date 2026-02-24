@@ -6,4 +6,9 @@ import java.time.LocalDate
 
 interface AgendaLinkRepository : JpaRepository<AgendaLink, Long> {
     fun findByGuildIdAndDateLocal(guildId: Long, dateLocal: LocalDate): AgendaLink?
+    fun findByGuildIdAndDateLocalBetweenOrderByDateLocalDesc(
+        guildId: Long,
+        startDate: LocalDate,
+        endDate: LocalDate,
+    ): List<AgendaLink>
 }

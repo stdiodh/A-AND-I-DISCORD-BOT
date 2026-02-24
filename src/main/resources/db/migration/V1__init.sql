@@ -1,15 +1,15 @@
 CREATE TABLE guild_config (
     guild_id BIGINT PRIMARY KEY,
-    timezone VARCHAR(64) NOT NULL,
+    timezone VARCHAR(64) NOT NULL DEFAULT 'Asia/Seoul',
     admin_role_id BIGINT,
-    mogakco_active_minutes INTEGER NOT NULL
+    mogakco_active_minutes INTEGER NOT NULL DEFAULT 30
 );
 
 CREATE TABLE agenda_links (
     id BIGSERIAL PRIMARY KEY,
     guild_id BIGINT NOT NULL,
     date_local DATE NOT NULL,
-    title VARCHAR(255) NOT NULL,
+    title VARCHAR(255),
     url TEXT NOT NULL,
     created_by BIGINT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -18,6 +18,9 @@ CREATE TABLE agenda_links (
     CONSTRAINT fk_agenda_links_guild_config
         FOREIGN KEY (guild_id) REFERENCES guild_config (guild_id)
 );
+
+CREATE INDEX idx_agenda_links_guild_date_local
+    ON agenda_links (guild_id, date_local);
 
 CREATE TABLE mogakco_channels (
     guild_id BIGINT NOT NULL,

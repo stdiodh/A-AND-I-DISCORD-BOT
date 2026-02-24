@@ -19,5 +19,5 @@ class GuildConfig(
     var adminRoleId: Long? = null,
 
     @Column(name = "mogakco_active_minutes", nullable = false)
-    var mogakcoActiveMinutes: Int = 0,
+    var mogakcoActiveMinutes: Int = 30,
 )
