@@ -5,6 +5,7 @@
 - 클린 코드 원칙: `DOCS/CLEAN_CODE_PRINCIPLES.md`
 - 커밋 컨벤션: `DOCS/COMMIT_CONVENTION.md`
 - PR 가이드: `DOCS/PR_GUIDE.md`
+- 테스트 런북: `DOCS/TESTING_RUNBOOK.md`
 
 ## 운영 규칙
 - 구현 전에 관련 문서를 먼저 읽고, 코딩/리뷰 시 문서 규칙을 우선 적용한다.

@@ -37,7 +37,7 @@
 ### 권한(Auth)
 - `ADMIN_ROLE`: 길드 설정(`guild_config.admin_role_id`)에 등록된 역할을 가진 사용자
 - `ANY`: 누구나 사용 가능
-- **Fallback 정책(권장)**: admin_role_id가 설정되지 않은 경우, 서버 관리 권한(예: Manage Server)을 가진 사용자만 ADMIN 커맨드를 실행할 수 있다.
+- **Fallback 정책(적용)**: admin_role_id가 설정되지 않은 경우, 서버 관리 권한(예: Manage Server/Administrator)을 가진 사용자만 ADMIN 커맨드를 실행할 수 있다.
 
 ### 응답 정책
 - 민감/설정 변경: 기본 `ephemeral`
@@ -59,7 +59,7 @@
 |--------|-----|----------|---------|----------|------|
 | SLASH | `/agenda set` | 오늘(Asia/Seoul)의 안건 문서 링크를 등록/수정(Upsert) | **Options:**<br>- `url` (String, required): http/https 링크<br>- `title` (String, optional): 표시용 제목 | 등록 완료 메시지 + 링크 버튼 | ADMIN_ROLE |
 | SLASH | `/agenda today` | 오늘(Asia/Seoul)의 안건 링크 조회 | 없음 | 등록된 링크 임베드/버튼 출력(없으면 안내 메시지) | ANY |
-| SLASH | `/agenda recent` | 최근 N일 안건 링크 목록 조회(선택) | **Options:**<br>- `days` (Int, optional, default: 7) | 최근 링크 목록 출력 | ANY |
+| SLASH | `/agenda recent` | 최근 N일 안건 링크 목록 조회 | **Options:**<br>- `days` (Int, optional, default: 7) | 최근 링크 목록 출력 | ANY |
 
 ---
 
@@ -67,9 +67,9 @@
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| SLASH | `/mogakco channel add` | 모각코로 집계할 음성채널을 등록 | **Options:**<br>- `channel` (VoiceChannel, required) | 등록 완료 메시지 | ADMIN_ROLE |
+| SLASH | `/mogakco channel add` | 모각코로 집계할 음성채널을 등록 | **Options:**<br>- `channel` (VoiceChannel, required) | 등록 완료 메시지 (이미 등록된 경우 안내 후 종료) | ADMIN_ROLE |
 | SLASH | `/mogakco channel remove` | 모각코 집계 대상 음성채널 제거 | **Options:**<br>- `channel` (VoiceChannel, required) | 제거 완료 메시지 | ADMIN_ROLE |
-| SLASH | `/mogakco channel list` | 현재 등록된 모각코 채널 목록 조회(선택) | 없음 | 채널 목록 출력 | ADMIN_ROLE |
+| SLASH | `/mogakco channel list` | 현재 등록된 모각코 채널 목록 조회 | 없음 | 채널 목록 출력 | ADMIN_ROLE |
 
 ---
 
@@ -83,9 +83,13 @@
 - 하루 누적 모각코 시간이 `guild_config.mogakco_active_minutes` 이상이면 **참여일(Active Day)** 1일로 인정
 - 참여율 = 참여일수 / 기간일수
 
+### 통계 집계 규칙
+- 집계 대상은 기간과 겹치는 `voice_sessions`이며, 세션은 겹치는 구간만 잘라서 합산
+- 참여일 계산 시 세션을 `Asia/Seoul` 날짜 경계로 분할해 일자별 누적시간을 계산
+
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| SLASH | `/mogakco leaderboard` | 기간별 누적시간 TOP N 랭킹 조회 | **Options:**<br>- `period` (Enum, required): week/month<br>- `top` (Int, optional, default: 10) | 순위(멘션) + 누적시간(시:분) | ANY |
+| SLASH | `/mogakco leaderboard` | 기간별 누적시간 TOP N 랭킹 조회 | **Options:**<br>- `period` (Enum, required): week/month<br>- `top` (Int, optional, default: 10) | 순위(멘션) + 누적시간(HH:MM), 데이터 없으면 "기록이 없습니다." | ANY |
 | SLASH | `/mogakco me` | 내 기간별 누적시간/참여일/참여율 조회 | **Options:**<br>- `period` (Enum, required): week/month | 내 통계 출력(권장: ephemeral) | ANY |
 
 ---
@@ -94,12 +98,17 @@
 
 모각코 시간 계산을 위해 음성 상태 변경 이벤트를 수집합니다.
 
+### 이벤트 변환 규칙
+- JDA 이벤트는 내부 입력 모델 `VoiceTransition(guildId, userId, oldChannelId, newChannelId, occurredAt)`로 변환 후 서비스에 전달
+
 ### 수집 대상
 - 길드 내 `mogakco_channels`에 등록된 VoiceChannel에 대해서만 기록
 
 ### 저장 규칙(요약)
 - 유저가 모각코 채널에 **입장**하면 `voice_sessions`에 세션을 생성(`joined_at`, `left_at=null`)
 - 유저가 모각코 채널에서 **퇴장/이동**하면 열린 세션을 종료(`left_at`, `duration_sec`)
+- 유저가 채널 **이동**한 경우, 이전 채널이 모각코면 종료하고 새 채널이 모각코면 새 세션을 생성
+- 동일 유저에 `left_at=null` 열린 세션이 이미 있으면, 새 세션 생성 전 기존 세션을 현재 시각으로 종료
 - 앱 시작 시 `left_at=null`인 세션은 **앱 시작 시각으로 종료 처리**하여 정합성을 보장
 
 ---
@@ -122,6 +131,7 @@
 - `created_at`
 - `updated_at`
 - UNIQUE(`guild_id`, `date_local`)
+- INDEX(`guild_id`, `date_local`)
 
 ### mogakco_channels
 - PK(`guild_id`, `channel_id`)
@@ -134,6 +144,8 @@
 - `joined_at`
 - `left_at` (nullable)
 - `duration_sec` (nullable)
+- INDEX(`guild_id`, `joined_at`)
+- INDEX(`guild_id`, `user_id`, `joined_at`)
 
 ---
 

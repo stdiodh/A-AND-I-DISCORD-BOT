@@ -14,17 +14,7 @@ Spring Boot + Kotlin + JDA 기반 디스코드 봇입니다.
 
 ## 로컬 실행
 
-1. PostgreSQL 실행
-
-```bash
-docker compose up -d postgres
-```
-
-`docker-compose.yml` 기본값은 예시(`postgres/postgres`)입니다.  
-운영/개인 환경에 맞게 `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`를 변경하고,
-아래 Spring 환경변수(`SPRING_DATASOURCE_*`)와 동일하게 맞춰주세요.
-
-2. 환경변수 설정
+1. 환경변수 설정
 
 ```bash
 cp .env.example .env
@@ -33,12 +23,38 @@ source .env
 set +a
 ```
 
+`docker-compose.yml` 기본값은 예시(`postgres/postgres`)입니다.  
+운영/개인 환경에 맞게 `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`를 변경하고,
+아래 Spring 환경변수(`SPRING_DATASOURCE_*`)와 동일하게 맞춰주세요.
+
+환경변수 연결 예시:
+
+```bash
+# docker-compose.yml (postgres 컨테이너)
+POSTGRES_DB=ai_discord_bot
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+
+# Spring Boot 애플리케이션(DB 접속 정보)
+SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/ai_discord_bot
+SPRING_DATASOURCE_USERNAME=postgres
+SPRING_DATASOURCE_PASSWORD=postgres
+```
+
 필수 환경변수:
 - `DISCORD_TOKEN`
-- `DISCORD_GUILD_ID`
 - `SPRING_DATASOURCE_URL`
 - `SPRING_DATASOURCE_USERNAME`
 - `SPRING_DATASOURCE_PASSWORD`
+
+선택 환경변수:
+- `DISCORD_GUILD_ID` (있으면 길드 커맨드, 없으면 글로벌 커맨드 등록)
+
+2. PostgreSQL 실행
+
+```bash
+docker compose up -d postgres
+```
 
 3. 애플리케이션 실행
 
@@ -52,18 +68,18 @@ set +a
   - `DISCORD_TOKEN`/`DISCORD_GUILD_ID`로 JDA 생성 및 로그인
   - `GUILD_VOICE_STATES` intent 활성화
   - 시작 시 길드 커맨드 `/ping`, `/agenda`, `/mogakco` 등록 (`updateCommands`)
-- `AgendaSlashCommandListener`
+- `AgendaSlashCommandHandler`
   - `/agenda set url:<필수> title:<선택>`
   - `/agenda today`
   - `guild_config.admin_role_id` 권한 체크 후 오늘(Asia/Seoul) 안건 링크 upsert
-- `MogakcoSlashCommandListener`
+- `MogakcoSlashCommandHandler`
   - `/mogakco channel add channel:<voice>`
   - `/mogakco channel remove channel:<voice>`
   - `/mogakco leaderboard period:<week|month> [top]`
   - `/mogakco me period:<week|month>`
 - `PingSlashCommandListener`
   - `/ping` 입력 시 `pong`을 ephemeral로 응답
-- `VoiceStateListener`
+- `VoiceStateIngestionListener`
   - 음성 채널 입장/퇴장 이벤트 수신 지점 (`GuildVoiceUpdateEvent`)
   - 모각코 등록 채널의 `voice_sessions`를 자동 기록
 
@@ -112,7 +128,7 @@ RDS 사용 시:
 - `app`의 `depends_on`에서 `postgres` 제거
 - `SPRING_DATASOURCE_URL/USERNAME/PASSWORD`를 RDS 값으로 설정
 
-## 최종 확인 체크리스트
+## 실행 체크리스트 (/ping, /agenda, /mogakco)
 
 - [ ] Discord Developer Portal에서 봇 초대 링크 생성 시 scopes에 `bot`, `applications.commands` 포함
 - [ ] `DISCORD_TOKEN` 환경변수 설정
