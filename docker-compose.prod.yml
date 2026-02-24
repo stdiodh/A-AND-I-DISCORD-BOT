@@ -1,0 +1,35 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-discord-bot-app
+    restart: always
+    environment:
+      DISCORD_TOKEN: ${DISCORD_TOKEN}
+      DISCORD_GUILD_ID: ${DISCORD_GUILD_ID}
+      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL:-jdbc:postgresql://postgres:5432/ai_discord_bot}
+      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME:-postgres}
+      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD:-postgres}
+      DISCORD_ENABLED: ${DISCORD_ENABLED:-true}
+    depends_on:
+      - postgres
+
+  postgres:
+    image: postgres:15
+    container_name: ai-discord-bot-postgres-prod
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ai_discord_bot}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - postgres_data_prod:/var/lib/postgresql/data
+
+    # If you use external RDS, remove this service and set:
+    # SPRING_DATASOURCE_URL=jdbc:postgresql://<rds-endpoint>:5432/<db>
+    # SPRING_DATASOURCE_USERNAME=<rds-user>
+    # SPRING_DATASOURCE_PASSWORD=<rds-password>
+
+volumes:
+  postgres_data_prod:
