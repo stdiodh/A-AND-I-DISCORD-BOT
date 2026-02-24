@@ -120,3 +120,23 @@ RDS 사용 시:
 - [ ] `/agenda set` -> `/agenda today` 동작 확인
 - [ ] `/mogakco channel add`로 모각코 채널 등록
 - [ ] 해당 음성채널 입장/퇴장 후 `/mogakco me`, `/mogakco leaderboard` 동작 확인
+
+## Branch and CI/CD Flow
+
+1. 기능 개발은 `develop` 기준으로 브랜치를 만들어 작업한다.
+2. `develop -> main` PR 시 `.github/workflows/ci-pr.yml`에서 `./gradlew test`를 실행한다.
+3. `main` 반영 후 릴리스 태그(`v1.0.0` 등)를 푸시한다.
+4. 태그 푸시 시 `.github/workflows/release-deploy.yml`이 실행되어:
+   - 태그 커밋이 `main`에 포함됐는지 확인
+   - 테스트 실행
+   - GHCR 이미지 빌드/푸시 (`ghcr.io/<owner>/<repo>:<tag>`)
+   - EC2에 SSH 배포(`docker compose -f docker-compose.prod.yml pull/up`)
+
+필수 GitHub Secrets:
+- `EC2_HOST`
+- `EC2_PORT` (선택, 기본 22)
+- `EC2_USER`
+- `EC2_SSH_KEY`
+- `EC2_APP_DIR`
+- `GHCR_USERNAME`
+- `GHCR_TOKEN` (GHCR pull 권한)
