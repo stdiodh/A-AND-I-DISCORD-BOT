@@ -7,14 +7,14 @@ import org.springframework.stereotype.Component
 
 @Component
 class VoiceSessionRecovery(
-    private val mogakcoService: MogakcoService,
+    private val voiceSessionService: VoiceSessionService,
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
 
     @EventListener(ApplicationReadyEvent::class)
     fun closeOpenSessions() {
-        val closedCount = mogakcoService.closeOpenSessionsAtStartup()
+        val closedCount = voiceSessionService.closeOpenSessionsAtStartup()
         if (closedCount > 0) {
             log.info("Closed {} open voice sessions at startup.", closedCount)
         }

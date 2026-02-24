@@ -27,7 +27,7 @@ class AgendaLink(
     @Column(name = "date_local", nullable = false)
     var dateLocal: LocalDate = LocalDate.now(),
 
-    @Column(name = "title", nullable = false, length = 255)
+    @Column(name = "title", length = 255)
     var title: String = "",
 
     @Column(name = "url", nullable = false)

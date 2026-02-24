@@ -45,6 +45,7 @@
 
 - `docs`: 문서만 변경 (`DOCS/`, `README.md`, `CONTRIBUTING.md`, `.github/pull_request_template.md`)
 - `chore(build)`: 빌드/런타임 설정 변경 (`build.gradle.kts`, `settings.gradle.kts`, `gradle/`, `gradlew*`)
+- `chore(ci)`: CI/CD 파이프라인 변경 (`.github/workflows/`)
 - `chore(deploy)`: 컨테이너/배포 설정 변경 (`Dockerfile`, `docker-compose*.yml`)
 - `feat(discord-core)`: 봇 초기화/공통 이벤트 인프라 변경
 - `feat(agenda)`: 안건(agenda) 기능 변경

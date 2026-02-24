@@ -2,35 +2,36 @@ package com.aandi.A_AND_I_DISCORD_BOT.agenda.service
 
 import com.aandi.A_AND_I_DISCORD_BOT.agenda.entity.AgendaLink
 import com.aandi.A_AND_I_DISCORD_BOT.agenda.repository.AgendaLinkRepository
-import com.aandi.A_AND_I_DISCORD_BOT.agenda.repository.GuildConfigRepository
-import org.springframework.beans.factory.annotation.Value
+import com.aandi.A_AND_I_DISCORD_BOT.common.auth.PermissionChecker
+import com.aandi.A_AND_I_DISCORD_BOT.common.time.PeriodCalculator
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.net.URI
 import java.time.Instant
 import java.time.LocalDate
-import java.time.ZoneId
 
 @Service
 class AgendaService(
-    private val guildConfigRepository: GuildConfigRepository,
     private val agendaLinkRepository: AgendaLinkRepository,
-    @Value("\${app.timezone:Asia/Seoul}") timezone: String,
+    private val periodCalculator: PeriodCalculator,
+    private val permissionChecker: PermissionChecker,
 ) {
-
-    private val zoneId: ZoneId = ZoneId.of(timezone)
 
     @Transactional
     fun setTodayAgenda(
         guildId: Long,
         requesterUserId: Long,
         requesterRoleIds: Set<Long>,
+        hasManageServerPermission: Boolean,
         rawUrl: String,
         rawTitle: String?,
     ): SetAgendaResult {
-        val guildConfig = guildConfigRepository.findById(guildId).orElse(null) ?: return SetAgendaResult.MissingGuildConfig
-        val adminRoleId = guildConfig.adminRoleId ?: return SetAgendaResult.AdminRoleNotConfigured
-        if (!requesterRoleIds.contains(adminRoleId)) {
+        val isAdmin = permissionChecker.isAdmin(
+            guildId = guildId,
+            requesterRoleIds = requesterRoleIds,
+            hasManageServerPermission = hasManageServerPermission,
+        )
+        if (!isAdmin) {
             return SetAgendaResult.Forbidden
         }
 
@@ -39,7 +40,7 @@ class AgendaService(
             is TitleValidationResult.Invalid -> return SetAgendaResult.InvalidTitle
             is TitleValidationResult.Valid -> titleResult.value
         }
-        val today = LocalDate.now(zoneId)
+        val today = periodCalculator.today()
         val now = Instant.now()
         val existing = agendaLinkRepository.findByGuildIdAndDateLocal(guildId, today)
 
@@ -66,12 +67,39 @@ class AgendaService(
 
     @Transactional(readOnly = true)
     fun getTodayAgenda(guildId: Long): AgendaView? {
-        val today = LocalDate.now(zoneId)
+        val today = periodCalculator.today()
         val agenda = agendaLinkRepository.findByGuildIdAndDateLocal(guildId, today) ?: return null
         return AgendaView(
             title = agenda.title,
             url = agenda.url,
             dateLocal = agenda.dateLocal,
+        )
+    }
+
+    @Transactional(readOnly = true)
+    fun getRecentAgendas(guildId: Long, days: Int): RecentAgendaResult {
+        if (days <= 0) {
+            return RecentAgendaResult.InvalidDays
+        }
+
+        val today = periodCalculator.today()
+        val startDate = today.minusDays(days.toLong() - 1L)
+        val agendas = agendaLinkRepository.findByGuildIdAndDateLocalBetweenOrderByDateLocalDesc(
+            guildId = guildId,
+            startDate = startDate,
+            endDate = today,
+        )
+        if (agendas.isEmpty()) {
+            return RecentAgendaResult.Empty
+        }
+        return RecentAgendaResult.Success(
+            agendas = agendas.map {
+                AgendaView(
+                    title = it.title,
+                    url = it.url,
+                    dateLocal = it.dateLocal,
+                )
+            },
         )
     }
 
@@ -116,11 +144,18 @@ class AgendaService(
             val updated: Boolean,
         ) : SetAgendaResult
 
-        data object MissingGuildConfig : SetAgendaResult
-        data object AdminRoleNotConfigured : SetAgendaResult
         data object Forbidden : SetAgendaResult
         data object InvalidUrl : SetAgendaResult
         data object InvalidTitle : SetAgendaResult
+    }
+
+    sealed interface RecentAgendaResult {
+        data class Success(
+            val agendas: List<AgendaView>,
+        ) : RecentAgendaResult
+
+        data object Empty : RecentAgendaResult
+        data object InvalidDays : RecentAgendaResult
     }
 
     private sealed interface TitleValidationResult {

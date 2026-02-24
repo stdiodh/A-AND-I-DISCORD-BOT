@@ -1,8 +1,7 @@
 services:
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ${APP_IMAGE:-ghcr.io/stdiodh/a-and-i-discord-bot}:${IMAGE_TAG:-latest}
+    pull_policy: always
     container_name: ai-discord-bot-app
     restart: always
     environment:
@@ -14,6 +13,11 @@ services:
       DISCORD_ENABLED: ${DISCORD_ENABLED:-true}
     depends_on:
       - postgres
+
+    # Build on host instead of pulling image:
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
 
   postgres:
     image: postgres:15
