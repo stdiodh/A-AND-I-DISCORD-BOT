@@ -7,6 +7,8 @@ spring:
     url: ${SPRING_DATASOURCE_URL}
     username: ${SPRING_DATASOURCE_USERNAME}
     password: ${SPRING_DATASOURCE_PASSWORD}
+  flyway:
+    enabled: true
   jpa:
     hibernate:
       ddl-auto: validate
@@ -20,9 +22,10 @@ spring:
 discord:
   enabled: ${DISCORD_ENABLED:true}
   token: ${DISCORD_TOKEN}
-  guild-id: ${DISCORD_GUILD_ID}
+  guild-id: ${DISCORD_GUILD_ID:}
 
 app:
+  # Reference timezone value. Date calculations should still use ZoneId in code.
   timezone: Asia/Seoul
 
 logging:
