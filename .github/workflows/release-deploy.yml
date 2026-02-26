@@ -1,31 +1,18 @@
-name: Release and Deploy
+name: Release Deploy (Docker Hub + EC2)
 
 on:
   push:
-    tags:
-      - 'v*'
-
-permissions:
-  contents: read
-  packages: write
+    branches:
+      - main
+    paths-ignore:
+      - 'README.md'
+      - 'DOCS/**'
+      - 'SECRET_DOCS/**'
+      - '*.md'
+      - '**/*.md'
 
 jobs:
-  verify-tag-on-main:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Ensure tag commit is on main
-        run: |
-          git fetch origin main
-          git branch -r --contains "$GITHUB_SHA" | grep -q "origin/main"
-
-  test:
-    needs: verify-tag-on-main
+  release-deploy:
     runs-on: ubuntu-latest
 
     steps:
@@ -44,60 +31,79 @@ jobs:
       - name: Run tests
         run: ./gradlew test
 
-  build-and-push:
-    needs: test
-    runs-on: ubuntu-latest
-    outputs:
-      image_name: ${{ steps.vars.outputs.image_name }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set image name
-        id: vars
-        run: |
-          echo "image_name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to GHCR
+      - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build and push image
+      - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
           push: true
           tags: |
-            ${{ steps.vars.outputs.image_name }}:${{ github.ref_name }}
-            ${{ steps.vars.outputs.image_name }}:latest
+            ${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_REPONAME }}:latest
+            ${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_REPONAME }}:${{ github.sha }}
 
-  deploy-ec2:
-    needs: build-and-push
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Deploy on EC2
+      - name: Create deploy directory on EC2
         uses: appleboy/ssh-action@v1.2.0
         with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          port: ${{ secrets.EC2_PORT || 22 }}
+          host: ${{ secrets.AWS_HOST }}
+          username: ${{ secrets.AWS_USER }}
+          key: ${{ secrets.AWS_SSH_KEY }}
           script_stop: true
           script: |
             set -e
-            cd "${{ secrets.EC2_APP_DIR }}"
-            echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u "${{ secrets.GHCR_USERNAME }}" --password-stdin
-            export APP_IMAGE="${{ needs.build-and-push.outputs.image_name }}"
-            export IMAGE_TAG="${{ github.ref_name }}"
-            docker compose -f docker-compose.prod.yml pull app
-            docker compose -f docker-compose.prod.yml up -d app
-            docker image prune -f
+            mkdir -p /home/${{ secrets.AWS_USER }}/app/a-and-i-discord-bot
+
+      - name: Copy docker-compose.prod.yml to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.AWS_HOST }}
+          username: ${{ secrets.AWS_USER }}
+          key: ${{ secrets.AWS_SSH_KEY }}
+          source: docker-compose.prod.yml
+          target: /home/${{ secrets.AWS_USER }}/app/a-and-i-discord-bot
+
+      - name: Create .env on EC2
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.AWS_HOST }}
+          username: ${{ secrets.AWS_USER }}
+          key: ${{ secrets.AWS_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -e
+            cat > /home/${{ secrets.AWS_USER }}/app/a-and-i-discord-bot/.env <<'__ENV__'
+            DISCORD_TOKEN=${{ secrets.DISCORD_TOKEN }}
+            DISCORD_GUILD_ID=${{ secrets.DISCORD_GUILD_ID }}
+            POSTGRES_DB=ai_discord_bot
+            POSTGRES_USER=postgres
+            POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+            SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/ai_discord_bot
+            SPRING_DATASOURCE_USERNAME=postgres
+            SPRING_DATASOURCE_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+            DISCORD_ENABLED=true
+            APP_IMAGE=${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_REPONAME }}
+            IMAGE_TAG=${{ github.sha }}
+            __ENV__
+
+      - name: Deploy on EC2
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.AWS_HOST }}
+          username: ${{ secrets.AWS_USER }}
+          key: ${{ secrets.AWS_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -e
+            cd /home/${{ secrets.AWS_USER }}/app/a-and-i-discord-bot
+            echo "${{ secrets.DOCKER_PASSWORD }}" | sudo docker login --username "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+            sudo docker compose -f docker-compose.prod.yml --env-file .env pull
+            sudo docker compose -f docker-compose.prod.yml --env-file .env up -d --force-recreate
+            sudo docker image prune -f
