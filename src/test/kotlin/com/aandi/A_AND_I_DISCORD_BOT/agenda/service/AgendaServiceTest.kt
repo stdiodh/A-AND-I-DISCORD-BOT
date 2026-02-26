@@ -2,6 +2,7 @@ package com.aandi.A_AND_I_DISCORD_BOT.agenda.service
 
 import com.aandi.A_AND_I_DISCORD_BOT.agenda.entity.AgendaLink
 import com.aandi.A_AND_I_DISCORD_BOT.agenda.repository.AgendaLinkRepository
+import com.aandi.A_AND_I_DISCORD_BOT.agenda.repository.GuildConfigRepository
 import com.aandi.A_AND_I_DISCORD_BOT.common.auth.PermissionChecker
 import com.aandi.A_AND_I_DISCORD_BOT.common.time.PeriodCalculator
 import io.kotest.core.spec.style.FunSpec
@@ -19,10 +20,12 @@ import java.time.LocalDate
 class AgendaServiceTest : FunSpec({
 
     val agendaLinkRepository = mockk<AgendaLinkRepository>()
+    val guildConfigRepository = mockk<GuildConfigRepository>()
     val periodCalculator = mockk<PeriodCalculator>()
     val permissionChecker = mockk<PermissionChecker>()
     val service = AgendaService(
         agendaLinkRepository = agendaLinkRepository,
+        guildConfigRepository = guildConfigRepository,
         periodCalculator = periodCalculator,
         permissionChecker = permissionChecker,
     )
@@ -33,6 +36,7 @@ class AgendaServiceTest : FunSpec({
 
     beforeTest {
         clearAllMocks()
+        every { guildConfigRepository.createDefaultIfAbsent(any()) } returns 1
     }
 
     test("setTodayAgenda-기존 링크가 없으면 신규 저장을 반환한다") {

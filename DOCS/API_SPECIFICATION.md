@@ -43,13 +43,17 @@
 - 민감/설정 변경: 기본 `ephemeral`
 - 랭킹: 공개 채널 출력(선호) 또는 서버 정책에 따라 ephemeral
 
+### 명령어 표기 정책
+- 기본 슬래시 커맨드는 한글 명칭을 사용한다. (`/핑`, `/안건`, `/모각코`)
+- 전환 기간 호환을 위해 기존 영문 명령(`ping`, `agenda`, `mogakco`)도 라우팅에서 허용한다.
+
 ---
 
 ## SystemCommand
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| SLASH | `/ping` | 봇 동작 확인 | 없음 | `pong` 메시지 | ANY |
+| SLASH | `/핑` | 봇 동작 확인 | 없음 | `pong` 메시지 | ANY |
 
 ---
 
@@ -57,9 +61,9 @@
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| SLASH | `/agenda set` | 오늘(Asia/Seoul)의 안건 문서 링크를 등록/수정(Upsert) | **Options:**<br>- `url` (String, required): http/https 링크<br>- `title` (String, optional): 표시용 제목 | 등록 완료 메시지 + 링크 버튼 | ADMIN_ROLE |
-| SLASH | `/agenda today` | 오늘(Asia/Seoul)의 안건 링크 조회 | 없음 | 등록된 링크 임베드/버튼 출력(없으면 안내 메시지) | ANY |
-| SLASH | `/agenda recent` | 최근 N일 안건 링크 목록 조회 | **Options:**<br>- `days` (Int, optional, default: 7) | 최근 링크 목록 출력 | ANY |
+| SLASH | `/안건 생성` | 오늘(Asia/Seoul)의 안건 문서 링크를 등록/수정(Upsert) | **Options:**<br>- `링크` (String, required): http/https 링크<br>- `제목` (String, optional): 표시용 제목 | 등록 완료 메시지 + 링크 버튼 | ADMIN_ROLE |
+| SLASH | `/안건 오늘` | 오늘(Asia/Seoul)의 안건 링크 조회 | 없음 | 등록된 링크 임베드/버튼 출력(없으면 안내 메시지) | ANY |
+| SLASH | `/안건 최근` | 최근 N일 안건 링크 목록 조회 | **Options:**<br>- `일수` (Int, optional, default: 7) | 최근 링크 목록 출력 | ANY |
 
 ---
 
@@ -67,9 +71,9 @@
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| SLASH | `/mogakco channel add` | 모각코로 집계할 음성채널을 등록 | **Options:**<br>- `channel` (VoiceChannel, required) | 등록 완료 메시지 (이미 등록된 경우 안내 후 종료) | ADMIN_ROLE |
-| SLASH | `/mogakco channel remove` | 모각코 집계 대상 음성채널 제거 | **Options:**<br>- `channel` (VoiceChannel, required) | 제거 완료 메시지 | ADMIN_ROLE |
-| SLASH | `/mogakco channel list` | 현재 등록된 모각코 채널 목록 조회 | 없음 | 채널 목록 출력 | ADMIN_ROLE |
+| SLASH | `/모각코 채널 등록` | 모각코로 집계할 음성채널을 등록 | **Options:**<br>- `음성채널` (VoiceChannel, required) | 등록 완료 메시지 (이미 등록된 경우 안내 후 종료) | ADMIN_ROLE |
+| SLASH | `/모각코 채널 해제` | 모각코 집계 대상 음성채널 제거 | **Options:**<br>- `음성채널` (VoiceChannel, required) | 제거 완료 메시지 | ADMIN_ROLE |
+| SLASH | `/모각코 채널 목록` | 현재 등록된 모각코 채널 목록 조회 | 없음 | 채널 목록 출력 | ADMIN_ROLE |
 
 ---
 
@@ -89,8 +93,8 @@
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| SLASH | `/mogakco leaderboard` | 기간별 누적시간 TOP N 랭킹 조회 | **Options:**<br>- `period` (Enum, required): week/month<br>- `top` (Int, optional, default: 10) | 순위(멘션) + 누적시간(HH:MM), 데이터 없으면 "기록이 없습니다." | ANY |
-| SLASH | `/mogakco me` | 내 기간별 누적시간/참여일/참여율 조회 | **Options:**<br>- `period` (Enum, required): week/month | 내 통계 출력(권장: ephemeral) | ANY |
+| SLASH | `/모각코 랭킹` | 기간별 누적시간 TOP N 랭킹 조회 | **Options:**<br>- `기간` (Enum, required): week/month<br>- `인원` (Int, optional, default: 10) | 순위(멘션) + 누적시간(HH:MM), 데이터 없으면 "기록이 없습니다." | ANY |
+| SLASH | `/모각코 내정보` | 내 기간별 누적시간/참여일/참여율 조회 | **Options:**<br>- `기간` (Enum, required): week/month | 내 통계 출력(권장: ephemeral) | ANY |
 
 ---
 

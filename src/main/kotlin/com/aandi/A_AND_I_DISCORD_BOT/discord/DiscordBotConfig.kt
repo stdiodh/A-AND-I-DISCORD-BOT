@@ -53,12 +53,12 @@ class DiscordBotConfig(
         val guildId = guildIdRaw.trim().toLongOrNull()
         if (guildId == null) {
             registerGlobalCommands(jda)
-            log.info("Discord bot logged in and /ping, /agenda, /mogakco registered globally")
+            log.info("Discord bot logged in and /핑, /안건, /모각코 registered globally")
             return jda
         }
 
         registerGuildCommands(jda, guildId)
-        log.info("Discord bot logged in and /ping, /agenda, /mogakco registered for guild {}", guildId)
+        log.info("Discord bot logged in and /핑, /안건, /모각코 registered for guild {}", guildId)
         return jda
     }
 
@@ -77,44 +77,44 @@ class DiscordBotConfig(
     }
 
     private fun commandDefinitions(): List<CommandData> = listOf(
-        Commands.slash("ping", "Health check"),
-        Commands.slash("agenda", "오늘 안건 링크 관리")
+        Commands.slash("핑", "봇 동작 확인"),
+        Commands.slash("안건", "오늘 안건 링크 관리")
             .addSubcommands(
-                SubcommandData("set", "오늘 안건 링크 등록/수정")
-                    .addOption(OptionType.STRING, "url", "http/https 링크", true)
-                    .addOption(OptionType.STRING, "title", "안건 제목", false),
-                SubcommandData("today", "오늘 안건 링크 조회"),
-                SubcommandData("recent", "최근 안건 링크 조회")
-                    .addOption(OptionType.INTEGER, "days", "조회할 최근 일수(기본 7)", false),
+                SubcommandData("생성", "오늘 안건 링크 등록/수정")
+                    .addOption(OptionType.STRING, "링크", "http/https 링크", true)
+                    .addOption(OptionType.STRING, "제목", "안건 제목", false),
+                SubcommandData("오늘", "오늘 안건 링크 조회"),
+                SubcommandData("최근", "최근 안건 링크 조회")
+                    .addOption(OptionType.INTEGER, "일수", "조회할 최근 일수(기본 7)", false),
             ),
-        Commands.slash("mogakco", "모각코 관리")
+        Commands.slash("모각코", "모각코 관리")
             .addSubcommandGroups(
-                SubcommandGroupData("channel", "모각코 채널 설정")
+                SubcommandGroupData("채널", "모각코 채널 설정")
                     .addSubcommands(
-                        SubcommandData("add", "모각코 채널 등록")
+                        SubcommandData("등록", "모각코 채널 등록")
                             .addOptions(
-                                OptionData(OptionType.CHANNEL, "channel", "모각코 집계 음성채널", true)
+                                OptionData(OptionType.CHANNEL, "음성채널", "모각코 집계 음성채널", true)
                                     .setChannelTypes(ChannelType.VOICE, ChannelType.STAGE),
                             ),
-                        SubcommandData("remove", "모각코 채널 등록 해제")
+                        SubcommandData("해제", "모각코 채널 등록 해제")
                             .addOptions(
-                                OptionData(OptionType.CHANNEL, "channel", "등록 해제할 음성채널", true)
+                                OptionData(OptionType.CHANNEL, "음성채널", "등록 해제할 음성채널", true)
                                     .setChannelTypes(ChannelType.VOICE, ChannelType.STAGE),
                             ),
-                        SubcommandData("list", "등록된 모각코 채널 목록 조회"),
+                        SubcommandData("목록", "등록된 모각코 채널 목록 조회"),
                     ),
             )
             .addSubcommands(
-                SubcommandData("leaderboard", "모각코 랭킹 조회")
+                SubcommandData("랭킹", "모각코 랭킹 조회")
                     .addOptions(
-                        OptionData(OptionType.STRING, "period", "조회 기간", true)
+                        OptionData(OptionType.STRING, "기간", "조회 기간", true)
                             .addChoice("주간", "week")
                             .addChoice("월간", "month"),
-                        OptionData(OptionType.INTEGER, "top", "조회 인원 수(기본 10)", false),
+                        OptionData(OptionType.INTEGER, "인원", "조회 인원 수(기본 10)", false),
                     ),
-                SubcommandData("me", "내 모각코 통계 조회")
+                SubcommandData("내정보", "내 모각코 통계 조회")
                     .addOptions(
-                        OptionData(OptionType.STRING, "period", "조회 기간", true)
+                        OptionData(OptionType.STRING, "기간", "조회 기간", true)
                             .addChoice("주간", "week")
                             .addChoice("월간", "month"),
                     ),

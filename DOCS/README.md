@@ -2,6 +2,7 @@
 
 ## 문서 목록
 - API 명세서: `DOCS/API_SPECIFICATION.md`
+- Discord 한글 명령어: `DOCS/DISCORD_COMMANDS_KO.md`
 - 클린 코드 원칙: `DOCS/CLEAN_CODE_PRINCIPLES.md`
 - 커밋 컨벤션: `DOCS/COMMIT_CONVENTION.md`
 - PR 가이드: `DOCS/PR_GUIDE.md`

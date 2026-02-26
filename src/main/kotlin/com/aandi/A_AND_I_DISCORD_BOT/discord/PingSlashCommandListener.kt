@@ -7,7 +7,7 @@ import org.springframework.stereotype.Component
 @Component
 class PingSlashCommandListener : ListenerAdapter() {
     override fun onSlashCommandInteraction(event: SlashCommandInteractionEvent) {
-        if (event.name != "ping") {
+        if (event.name != "핑" && event.name != "ping") {
             return
         }
         event.reply("pong")

@@ -19,20 +19,20 @@ class MogakcoSlashCommandHandler(
 ) : ListenerAdapter() {
 
     override fun onSlashCommandInteraction(event: SlashCommandInteractionEvent) {
-        if (event.name != "mogakco") {
+        if (event.name != COMMAND_NAME_KO && event.name != COMMAND_NAME_EN) {
             return
         }
 
-        if (event.subcommandGroup == "channel") {
+        if (isSubcommandGroup(event, SUBCOMMAND_GROUP_CHANNEL_KO, SUBCOMMAND_GROUP_CHANNEL_EN)) {
             routeChannelCommand(event)
             return
         }
 
-        if (event.subcommandName == "leaderboard") {
+        if (isSubcommand(event, SUBCOMMAND_LEADERBOARD_KO, SUBCOMMAND_LEADERBOARD_EN)) {
             handleLeaderboard(event)
             return
         }
-        if (event.subcommandName == "me") {
+        if (isSubcommand(event, SUBCOMMAND_ME_KO, SUBCOMMAND_ME_EN)) {
             handleMe(event)
             return
         }
@@ -41,15 +41,15 @@ class MogakcoSlashCommandHandler(
     }
 
     private fun routeChannelCommand(event: SlashCommandInteractionEvent) {
-        if (event.subcommandName == "add") {
+        if (isSubcommand(event, SUBCOMMAND_CHANNEL_ADD_KO, SUBCOMMAND_CHANNEL_ADD_EN)) {
             handleChannelAdd(event)
             return
         }
-        if (event.subcommandName == "remove") {
+        if (isSubcommand(event, SUBCOMMAND_CHANNEL_REMOVE_KO, SUBCOMMAND_CHANNEL_REMOVE_EN)) {
             handleChannelRemove(event)
             return
         }
-        if (event.subcommandName == "list") {
+        if (isSubcommand(event, SUBCOMMAND_CHANNEL_LIST_KO, SUBCOMMAND_CHANNEL_LIST_EN)) {
             handleChannelList(event)
             return
         }
@@ -65,9 +65,9 @@ class MogakcoSlashCommandHandler(
             return
         }
 
-        val channel = event.getOption("channel")?.asChannel
+        val channel = event.getOption(OPTION_CHANNEL_KO)?.asChannel ?: event.getOption(OPTION_CHANNEL_EN)?.asChannel
         if (channel == null) {
-            replyInvalidInputError(event, "channel 옵션이 필요합니다.")
+            replyInvalidInputError(event, "음성채널 옵션이 필요합니다.")
             return
         }
 
@@ -111,9 +111,9 @@ class MogakcoSlashCommandHandler(
             return
         }
 
-        val channel = event.getOption("channel")?.asChannel
+        val channel = event.getOption(OPTION_CHANNEL_KO)?.asChannel ?: event.getOption(OPTION_CHANNEL_EN)?.asChannel
         if (channel == null) {
-            replyInvalidInputError(event, "channel 옵션이 필요합니다.")
+            replyInvalidInputError(event, "음성채널 옵션이 필요합니다.")
             return
         }
 
@@ -191,13 +191,13 @@ class MogakcoSlashCommandHandler(
             return
         }
 
-        val period = parsePeriod(event.getOption("period")?.asString)
+        val period = parsePeriod(event.getOption(OPTION_PERIOD_KO)?.asString ?: event.getOption(OPTION_PERIOD_EN)?.asString)
         if (period == null) {
-            replyInvalidInputError(event, "period는 week 또는 month만 가능합니다.")
+            replyInvalidInputError(event, "기간은 week 또는 month만 가능합니다.")
             return
         }
 
-        val top = event.getOption("top")?.asInt ?: 10
+        val top = event.getOption(OPTION_TOP_KO)?.asInt ?: event.getOption(OPTION_TOP_EN)?.asInt ?: 10
         val leaderboard = mogakcoService.getLeaderboard(guild.idLong, period, top)
         if (leaderboard.entries.isEmpty()) {
             replyResourceNotFoundError(event, "기록이 없습니다.", false)
@@ -220,9 +220,9 @@ class MogakcoSlashCommandHandler(
             return
         }
 
-        val period = parsePeriod(event.getOption("period")?.asString)
+        val period = parsePeriod(event.getOption(OPTION_PERIOD_KO)?.asString ?: event.getOption(OPTION_PERIOD_EN)?.asString)
         if (period == null) {
-            replyInvalidInputError(event, "period는 week 또는 month만 가능합니다.")
+            replyInvalidInputError(event, "기간은 week 또는 month만 가능합니다.")
             return
         }
 
@@ -261,6 +261,18 @@ class MogakcoSlashCommandHandler(
     }
 
     private fun formatPercent(rate: Double): String = String.format(Locale.US, "%.1f%%", rate * 100.0)
+
+    private fun isSubcommand(
+        event: SlashCommandInteractionEvent,
+        ko: String,
+        en: String,
+    ): Boolean = event.subcommandName == ko || event.subcommandName == en
+
+    private fun isSubcommandGroup(
+        event: SlashCommandInteractionEvent,
+        ko: String,
+        en: String,
+    ): Boolean = event.subcommandGroup == ko || event.subcommandGroup == en
 
     private fun hasManageServerPermission(member: net.dv8tion.jda.api.entities.Member): Boolean {
         if (member.hasPermission(Permission.ADMINISTRATOR)) {
@@ -330,5 +342,28 @@ class MogakcoSlashCommandHandler(
         event.reply(payload)
             .setEphemeral(ephemeral)
             .queue()
+    }
+
+    companion object {
+        private const val COMMAND_NAME_KO = "모각코"
+        private const val COMMAND_NAME_EN = "mogakco"
+        private const val SUBCOMMAND_GROUP_CHANNEL_KO = "채널"
+        private const val SUBCOMMAND_GROUP_CHANNEL_EN = "channel"
+        private const val SUBCOMMAND_CHANNEL_ADD_KO = "등록"
+        private const val SUBCOMMAND_CHANNEL_ADD_EN = "add"
+        private const val SUBCOMMAND_CHANNEL_REMOVE_KO = "해제"
+        private const val SUBCOMMAND_CHANNEL_REMOVE_EN = "remove"
+        private const val SUBCOMMAND_CHANNEL_LIST_KO = "목록"
+        private const val SUBCOMMAND_CHANNEL_LIST_EN = "list"
+        private const val SUBCOMMAND_LEADERBOARD_KO = "랭킹"
+        private const val SUBCOMMAND_LEADERBOARD_EN = "leaderboard"
+        private const val SUBCOMMAND_ME_KO = "내정보"
+        private const val SUBCOMMAND_ME_EN = "me"
+        private const val OPTION_CHANNEL_KO = "음성채널"
+        private const val OPTION_CHANNEL_EN = "channel"
+        private const val OPTION_PERIOD_KO = "기간"
+        private const val OPTION_PERIOD_EN = "period"
+        private const val OPTION_TOP_KO = "인원"
+        private const val OPTION_TOP_EN = "top"
     }
 }
