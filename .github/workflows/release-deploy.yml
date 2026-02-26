@@ -89,6 +89,8 @@ jobs:
             SPRING_DATASOURCE_USERNAME=postgres
             SPRING_DATASOURCE_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
             DISCORD_ENABLED=true
+            CERTBOT_DOMAIN=${{ secrets.CERTBOT_DOMAIN }}
+            CERTBOT_EMAIL=${{ secrets.CERTBOT_EMAIL }}
             APP_IMAGE=${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_REPONAME }}
             IMAGE_TAG=${{ github.sha }}
             __ENV__
