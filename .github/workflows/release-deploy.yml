@@ -108,11 +108,15 @@ jobs:
             echo "${{ secrets.DOCKER_PASSWORD }}" | sudo docker login --username "${{ secrets.DOCKER_USERNAME }}" --password-stdin
 
             if sudo docker compose version >/dev/null 2>&1; then
-              sudo docker compose -f docker-compose.prod.yml pull
-              sudo docker compose -f docker-compose.prod.yml up -d --force-recreate
+              sudo docker compose -f docker-compose.prod.yml stop nginx certbot || true
+              sudo docker compose -f docker-compose.prod.yml rm -f nginx certbot || true
+              sudo docker compose -f docker-compose.prod.yml pull app postgres
+              sudo docker compose -f docker-compose.prod.yml up -d --force-recreate app postgres
             elif command -v docker-compose >/dev/null 2>&1; then
-              sudo docker-compose -f docker-compose.prod.yml pull
-              sudo docker-compose -f docker-compose.prod.yml up -d --force-recreate
+              sudo docker-compose -f docker-compose.prod.yml stop nginx certbot || true
+              sudo docker-compose -f docker-compose.prod.yml rm -f nginx certbot || true
+              sudo docker-compose -f docker-compose.prod.yml pull app postgres
+              sudo docker-compose -f docker-compose.prod.yml up -d --force-recreate app postgres
             else
               echo "Docker Compose is not installed on EC2."
               exit 1

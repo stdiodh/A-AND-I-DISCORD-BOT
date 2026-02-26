@@ -40,6 +40,8 @@ services:
   nginx:
     image: nginx:1.27-alpine
     container_name: ai-discord-bot-nginx
+    profiles:
+      - standalone-proxy
     restart: always
     depends_on:
       - app
@@ -67,6 +69,8 @@ services:
   certbot:
     image: certbot/certbot:latest
     container_name: ai-discord-bot-certbot
+    profiles:
+      - standalone-proxy
     restart: always
     environment:
       CERTBOT_DOMAIN: ${CERTBOT_DOMAIN:-}
