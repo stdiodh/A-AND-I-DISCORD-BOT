@@ -19,19 +19,19 @@ class AgendaSlashCommandHandler(
 ) : ListenerAdapter() {
 
     override fun onSlashCommandInteraction(event: SlashCommandInteractionEvent) {
-        if (event.name != "agenda") {
+        if (event.name != COMMAND_NAME_KO && event.name != COMMAND_NAME_EN) {
             return
         }
 
-        if (event.subcommandName == "set") {
+        if (isSubcommand(event, SUBCOMMAND_SET_KO, SUBCOMMAND_SET_EN)) {
             handleSet(event)
             return
         }
-        if (event.subcommandName == "today") {
+        if (isSubcommand(event, SUBCOMMAND_TODAY_KO, SUBCOMMAND_TODAY_EN)) {
             handleToday(event)
             return
         }
-        if (event.subcommandName == "recent") {
+        if (isSubcommand(event, SUBCOMMAND_RECENT_KO, SUBCOMMAND_RECENT_EN)) {
             handleRecent(event)
             return
         }
@@ -47,9 +47,9 @@ class AgendaSlashCommandHandler(
             return
         }
 
-        val url = event.getOption("url")?.asString
+        val url = event.getOption(OPTION_URL_KO)?.asString ?: event.getOption(OPTION_URL_EN)?.asString
         if (url.isNullOrBlank()) {
-            replyInvalidInputError(event, "url 옵션은 필수입니다.", true)
+            replyInvalidInputError(event, "링크 옵션은 필수입니다.", true)
             return
         }
 
@@ -60,7 +60,7 @@ class AgendaSlashCommandHandler(
             requesterRoleIds = member.roles.map { it.idLong }.toSet(),
             hasManageServerPermission = hasManageServerPermission,
             rawUrl = url,
-            rawTitle = event.getOption("title")?.asString,
+            rawTitle = event.getOption(OPTION_TITLE_KO)?.asString ?: event.getOption(OPTION_TITLE_EN)?.asString,
         )
 
         when (result) {
@@ -118,7 +118,7 @@ class AgendaSlashCommandHandler(
             return
         }
 
-        val days = event.getOption("days")?.asInt ?: DEFAULT_RECENT_DAYS
+        val days = event.getOption(OPTION_DAYS_KO)?.asInt ?: event.getOption(OPTION_DAYS_EN)?.asInt ?: DEFAULT_RECENT_DAYS
         val result = agendaService.getRecentAgendas(guild.idLong, days)
         when (result) {
             is AgendaService.RecentAgendaResult.Success -> {
@@ -160,6 +160,12 @@ class AgendaSlashCommandHandler(
         }
         return title
     }
+
+    private fun isSubcommand(
+        event: SlashCommandInteractionEvent,
+        ko: String,
+        en: String,
+    ): Boolean = event.subcommandName == ko || event.subcommandName == en
 
     private fun replyGuildOnlyError(event: SlashCommandInteractionEvent) {
         replyInvalidInputError(event, "길드에서만 사용할 수 있습니다.", true)
@@ -215,6 +221,20 @@ class AgendaSlashCommandHandler(
     }
 
     companion object {
+        private const val COMMAND_NAME_KO = "안건"
+        private const val COMMAND_NAME_EN = "agenda"
+        private const val SUBCOMMAND_SET_KO = "생성"
+        private const val SUBCOMMAND_SET_EN = "set"
+        private const val SUBCOMMAND_TODAY_KO = "오늘"
+        private const val SUBCOMMAND_TODAY_EN = "today"
+        private const val SUBCOMMAND_RECENT_KO = "최근"
+        private const val SUBCOMMAND_RECENT_EN = "recent"
+        private const val OPTION_URL_KO = "링크"
+        private const val OPTION_URL_EN = "url"
+        private const val OPTION_TITLE_KO = "제목"
+        private const val OPTION_TITLE_EN = "title"
+        private const val OPTION_DAYS_KO = "일수"
+        private const val OPTION_DAYS_EN = "days"
         private const val DEFAULT_RECENT_DAYS = 7
     }
 }

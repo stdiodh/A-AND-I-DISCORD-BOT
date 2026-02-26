@@ -2,6 +2,7 @@ package com.aandi.A_AND_I_DISCORD_BOT.agenda.service
 
 import com.aandi.A_AND_I_DISCORD_BOT.agenda.entity.AgendaLink
 import com.aandi.A_AND_I_DISCORD_BOT.agenda.repository.AgendaLinkRepository
+import com.aandi.A_AND_I_DISCORD_BOT.agenda.repository.GuildConfigRepository
 import com.aandi.A_AND_I_DISCORD_BOT.common.auth.PermissionChecker
 import com.aandi.A_AND_I_DISCORD_BOT.common.time.PeriodCalculator
 import org.springframework.stereotype.Service
@@ -13,6 +14,7 @@ import java.time.LocalDate
 @Service
 class AgendaService(
     private val agendaLinkRepository: AgendaLinkRepository,
+    private val guildConfigRepository: GuildConfigRepository,
     private val periodCalculator: PeriodCalculator,
     private val permissionChecker: PermissionChecker,
 ) {
@@ -40,6 +42,7 @@ class AgendaService(
             is TitleValidationResult.Invalid -> return SetAgendaResult.InvalidTitle
             is TitleValidationResult.Valid -> titleResult.value
         }
+        guildConfigRepository.createDefaultIfAbsent(guildId)
         val today = periodCalculator.today()
         val now = Instant.now()
         val existing = agendaLinkRepository.findByGuildIdAndDateLocal(guildId, today)

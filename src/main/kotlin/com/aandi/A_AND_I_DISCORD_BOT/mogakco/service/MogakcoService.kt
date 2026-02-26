@@ -36,6 +36,7 @@ class MogakcoService(
             return ChannelUpdateResult.Forbidden
         }
 
+        guildConfigRepository.createDefaultIfAbsent(guildId)
         val id = MogakcoChannelId(guildId = guildId, channelId = channelId)
         if (mogakcoChannelRepository.existsById(id)) {
             return ChannelUpdateResult.AlreadyExists
