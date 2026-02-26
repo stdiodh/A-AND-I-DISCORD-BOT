@@ -106,6 +106,16 @@ jobs:
             set -e
             cd /home/${{ secrets.AWS_USER }}/app/a-and-i-discord-bot
             echo "${{ secrets.DOCKER_PASSWORD }}" | sudo docker login --username "${{ secrets.DOCKER_USERNAME }}" --password-stdin
-            sudo docker compose -f docker-compose.prod.yml --env-file .env pull
-            sudo docker compose -f docker-compose.prod.yml --env-file .env up -d --force-recreate
+
+            if sudo docker compose version >/dev/null 2>&1; then
+              sudo docker compose -f docker-compose.prod.yml pull
+              sudo docker compose -f docker-compose.prod.yml up -d --force-recreate
+            elif command -v docker-compose >/dev/null 2>&1; then
+              sudo docker-compose -f docker-compose.prod.yml pull
+              sudo docker-compose -f docker-compose.prod.yml up -d --force-recreate
+            else
+              echo "Docker Compose is not installed on EC2."
+              exit 1
+            fi
+
             sudo docker image prune -f
