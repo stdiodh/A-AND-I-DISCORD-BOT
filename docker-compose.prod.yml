@@ -1,12 +1,11 @@
 services:
   app:
-    image: ${APP_IMAGE:-ghcr.io/stdiodh/a-and-i-discord-bot}:${IMAGE_TAG:-latest}
-    pull_policy: always
+    image: ${APP_IMAGE}:${IMAGE_TAG:-latest}
     container_name: ai-discord-bot-app
     restart: always
     environment:
       DISCORD_TOKEN: ${DISCORD_TOKEN}
-      DISCORD_GUILD_ID: ${DISCORD_GUILD_ID}
+      DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:-}
       SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL:-jdbc:postgresql://postgres:5432/ai_discord_bot}
       SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME:-postgres}
       SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD:-postgres}
