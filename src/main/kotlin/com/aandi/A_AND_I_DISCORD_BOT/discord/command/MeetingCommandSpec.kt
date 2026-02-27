@@ -23,6 +23,10 @@ class MeetingCommandSpec : DiscordCommandSpec {
                                 .setChannelTypes(ChannelType.TEXT),
                         ),
                     SubcommandData("종료", "최근 회의를 종료하고 스레드를 아카이브합니다."),
+                    SubcommandData("안건등록", "오늘 회의 안건 링크를 등록/수정합니다.")
+                        .addOption(OptionType.STRING, "링크", "http/https 링크", true)
+                        .addOption(OptionType.STRING, "제목", "안건 제목(선택)", false),
+                    SubcommandData("안건조회", "오늘 회의 안건 링크를 조회합니다."),
                 ),
         )
     }

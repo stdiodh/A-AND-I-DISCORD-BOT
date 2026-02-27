@@ -24,6 +24,9 @@ class MeetingSessionEntity(
     @Column(name = "thread_id", nullable = false)
     var threadId: Long = 0,
 
+    @Column(name = "agenda_link_id")
+    var agendaLinkId: Long? = null,
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 16)
     var status: MeetingSessionStatus = MeetingSessionStatus.ACTIVE,

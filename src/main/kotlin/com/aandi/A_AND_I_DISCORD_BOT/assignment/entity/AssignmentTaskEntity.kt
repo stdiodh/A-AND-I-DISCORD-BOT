@@ -33,6 +33,24 @@ class AssignmentTaskEntity(
     @Column(name = "remind_at", nullable = false)
     var remindAt: Instant = Instant.now(),
 
+    @Column(name = "due_at", nullable = false)
+    var dueAt: Instant = Instant.now(),
+
+    @Column(name = "notify_role_id")
+    var notifyRoleId: Long? = null,
+
+    @Column(name = "pre_remind_hours_json")
+    var preRemindHoursJson: String? = null,
+
+    @Column(name = "pre_notified_json")
+    var preNotifiedJson: String? = null,
+
+    @Column(name = "closing_message")
+    var closingMessage: String? = null,
+
+    @Column(name = "closed_at")
+    var closedAt: Instant? = null,
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 16)
     var status: AssignmentStatus = AssignmentStatus.PENDING,

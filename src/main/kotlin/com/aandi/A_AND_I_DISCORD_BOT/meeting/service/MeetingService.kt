@@ -45,6 +45,7 @@ class MeetingService(
 
     sealed interface StartResult {
         data class Success(
+            val sessionId: Long,
             val threadId: Long,
             val threadName: String,
         ) : StartResult
@@ -57,10 +58,15 @@ class MeetingService(
 
     sealed interface EndResult {
         data class Success(
+            val sessionId: Long,
             val threadId: Long,
             val summaryMessageId: Long,
+            val sourceMessageCount: Int,
+            val agendaTitle: String?,
+            val agendaUrl: String?,
             val decisions: List<String>,
             val actionItems: List<String>,
+            val archived: Boolean,
         ) : EndResult
 
         data object SessionNotFound : EndResult

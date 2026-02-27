@@ -37,6 +37,7 @@ assignment:
     poll-delay-ms: ${ASSIGNMENT_REMINDER_POLL_DELAY_MS:30000}
     grace-hours: ${ASSIGNMENT_REMINDER_GRACE_HOURS:24}
     max-per-tick: ${ASSIGNMENT_REMINDER_MAX_PER_TICK:20}
+    pre-scan-hours: ${ASSIGNMENT_REMINDER_PRE_SCAN_HOURS:24}
 
 voice:
   summary:

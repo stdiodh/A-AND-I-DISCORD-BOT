@@ -4,6 +4,7 @@ enum class AssignmentStatus {
     PENDING,
     DONE,
     CANCELED,
+    CLOSED,
     ;
 
     companion object {
@@ -15,6 +16,9 @@ enum class AssignmentStatus {
             "CANCELED" to CANCELED,
             "CANCELLED" to CANCELED,
             "취소" to CANCELED,
+            "CLOSED" to CLOSED,
+            "종료" to CLOSED,
+            "마감" to CLOSED,
         )
 
         fun fromFilter(raw: String): AssignmentStatus? {
