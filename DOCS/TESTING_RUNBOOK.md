@@ -11,6 +11,7 @@
 - 기본 우선순위: 단위 테스트 > 슬라이스 테스트 > 통합 테스트
 - 커맨드/핸들러는 서비스 로직을 중심으로 검증하고, 입출력 포맷은 최소 범위로 확인
 - 외부 시스템(Discord/AWS/네트워크)은 테스트 더블로 대체
+- 시간 정책은 `입력/표시: KST(Asia/Seoul), 저장: UTC`를 기본으로 검증
 
 ## Kotest 기반 표준
 - 스펙 스타일: `DescribeSpec` 또는 `FunSpec`를 기본으로 사용
@@ -30,6 +31,12 @@
 - Spring 테스트는 `@ActiveProfiles("test")`로 test profile을 사용
 - 네트워크 I/O는 테스트 더블로 대체하고, 실제 토큰 사용 테스트는 작성하지 않음
 
+## 빠른 테스트 명령
+- `./gradlew test --tests "*VoiceSummary*"`
+- `./gradlew test --tests "*Assignment*"`
+- `./gradlew test --tests "*Mogakco*"`
+- `./gradlew test`
+
 ## DB 테스트 원칙
 - 기본은 단위 테스트(mock repository)로 작성
 - DB 동작 검증이 꼭 필요한 경우에만 슬라이스 테스트 또는 통합 테스트 추가
@@ -39,9 +46,15 @@
 - [ ] 핵심 유스케이스 정상 경로 테스트가 있다
 - [ ] 주요 예외/오류 입력 케이스 테스트가 있다
 - [ ] 시간/기간 계산 로직은 경계값 테스트가 있다
+- [ ] KST 입력/표시와 UTC 저장 변환 테스트가 있다
+- [ ] 과제 알림 시각 과거 입력 거부(remind_at <= now) 테스트가 있다
 - [ ] 권한 분기는 허용/거부 모두 검증한다
+- [ ] 운영진 역할 미설정 fallback(Manage Server/Administrator) 테스트가 있다
 - [ ] DB 연동 변경 시 repository 또는 슬라이스 테스트가 있다
+- [ ] 동시성 쿼리(FOR UPDATE SKIP LOCKED)는 가능하면 Testcontainers 통합 테스트로 검증한다
 - [ ] Discord/JDA는 테스트에서 비활성화되어 있다
+- [ ] 테스트 프로파일에서 스케줄링이 비활성화되어 있다(`spring.task.scheduling.enabled=false`)
+- [ ] Voice Summary는 `enabled=false`에서 start/stop/status가 차단되는 테스트가 있다
 
 ## Codex 프롬프트 템플릿
 아래 섹션을 다음 ADD 작업 시작 시 그대로 복붙한다.
