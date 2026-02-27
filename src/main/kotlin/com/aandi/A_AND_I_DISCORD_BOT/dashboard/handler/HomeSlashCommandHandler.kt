@@ -1,9 +1,7 @@
 package com.aandi.A_AND_I_DISCORD_BOT.dashboard.handler
 
-import com.aandi.A_AND_I_DISCORD_BOT.admin.auth.AdminPermissionChecker
-import com.aandi.A_AND_I_DISCORD_BOT.common.error.DiscordErrorCode
-import com.aandi.A_AND_I_DISCORD_BOT.common.error.DiscordErrorFormatter
-import com.aandi.A_AND_I_DISCORD_BOT.common.error.DiscordErrorResponse
+import com.aandi.A_AND_I_DISCORD_BOT.common.auth.PermissionGate
+import com.aandi.A_AND_I_DISCORD_BOT.common.discord.DiscordReplyFactory
 import com.aandi.A_AND_I_DISCORD_BOT.dashboard.service.HomeDashboardService
 import net.dv8tion.jda.api.entities.channel.ChannelType
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent
@@ -15,7 +13,8 @@ import org.springframework.stereotype.Component
 @ConditionalOnProperty(name = ["discord.enabled"], havingValue = "true", matchIfMissing = true)
 class HomeSlashCommandHandler(
     private val homeDashboardService: HomeDashboardService,
-    private val adminPermissionChecker: AdminPermissionChecker,
+    private val permissionGate: PermissionGate,
+    private val discordReplyFactory: DiscordReplyFactory,
 ) : ListenerAdapter() {
 
     override fun onSlashCommandInteraction(event: SlashCommandInteractionEvent) {
@@ -30,24 +29,24 @@ class HomeSlashCommandHandler(
             handleRefresh(event)
             return
         }
-        replyInvalidInput(event, "지원하지 않는 하위 명령입니다.")
+        discordReplyFactory.invalidInput(event, "지원하지 않는 하위 명령입니다.")
     }
 
     private fun handleCreate(event: SlashCommandInteractionEvent) {
         val guild = event.guild
         val member = event.member
         if (guild == null || member == null) {
-            replyInvalidInput(event, "길드에서만 사용할 수 있습니다.")
+            discordReplyFactory.invalidInput(event, "길드에서만 사용할 수 있습니다.")
             return
         }
-        if (!adminPermissionChecker.canSetAdminRole(guild.idLong, member)) {
-            replyAccessDenied(event, "홈 생성 권한이 없습니다.")
+        if (!permissionGate.canAdminAction(guild.idLong, member)) {
+            discordReplyFactory.accessDenied(event, "홈 생성 권한이 없습니다.")
             return
         }
 
         val channel = event.getOption(OPTION_CHANNEL_KO)?.asChannel
         if (channel == null || channel.type != ChannelType.TEXT) {
-            replyInvalidInput(event, "텍스트 채널을 지정해 주세요.")
+            discordReplyFactory.invalidInput(event, "텍스트 채널을 지정해 주세요.")
             return
         }
 
@@ -65,15 +64,15 @@ class HomeSlashCommandHandler(
             }
 
             HomeDashboardService.Result.ChannelNotFound -> {
-                replyInvalidInput(event, "대상 채널을 찾을 수 없습니다.")
+                discordReplyFactory.invalidInput(event, "대상 채널을 찾을 수 없습니다.")
             }
 
             HomeDashboardService.Result.MessageNotFound -> {
-                replyInvalidInput(event, "홈 메시지 생성에 실패했습니다.")
+                discordReplyFactory.invalidInput(event, "홈 메시지 생성에 실패했습니다.")
             }
 
             HomeDashboardService.Result.NotConfigured -> {
-                replyInvalidInput(event, "홈 메시지 생성에 실패했습니다.")
+                discordReplyFactory.invalidInput(event, "홈 메시지 생성에 실패했습니다.")
             }
         }
     }
@@ -82,11 +81,11 @@ class HomeSlashCommandHandler(
         val guild = event.guild
         val member = event.member
         if (guild == null || member == null) {
-            replyInvalidInput(event, "길드에서만 사용할 수 있습니다.")
+            discordReplyFactory.invalidInput(event, "길드에서만 사용할 수 있습니다.")
             return
         }
-        if (!adminPermissionChecker.canSetAdminRole(guild.idLong, member)) {
-            replyAccessDenied(event, "홈 갱신 권한이 없습니다.")
+        if (!permissionGate.canAdminAction(guild.idLong, member)) {
+            discordReplyFactory.accessDenied(event, "홈 갱신 권한이 없습니다.")
             return
         }
 
@@ -98,42 +97,21 @@ class HomeSlashCommandHandler(
             }
 
             HomeDashboardService.Result.NotConfigured -> {
-                replyInvalidInput(event, "먼저 `/홈 생성`을 실행해 홈 메시지를 만들어 주세요.")
+                discordReplyFactory.invalidInput(event, "먼저 `/홈 생성`을 실행해 홈 메시지를 만들어 주세요.")
             }
 
             HomeDashboardService.Result.ChannelNotFound -> {
-                replyInvalidInput(event, "저장된 홈 채널을 찾을 수 없습니다. `/홈 생성`으로 다시 생성해 주세요.")
+                discordReplyFactory.invalidInput(event, "저장된 홈 채널을 찾을 수 없습니다. `/홈 생성`으로 다시 생성해 주세요.")
             }
 
             HomeDashboardService.Result.MessageNotFound -> {
-                replyInvalidInput(event, "저장된 홈 메시지를 찾을 수 없습니다. `/홈 생성`으로 다시 생성해 주세요.")
+                discordReplyFactory.invalidInput(event, "저장된 홈 메시지를 찾을 수 없습니다. `/홈 생성`으로 다시 생성해 주세요.")
             }
         }
     }
 
     private fun isSubcommand(event: SlashCommandInteractionEvent, ko: String, en: String): Boolean {
         return event.subcommandName == ko || event.subcommandName == en
-    }
-
-    private fun replyInvalidInput(event: SlashCommandInteractionEvent, message: String) {
-        replyError(event, DiscordErrorCode.COMMON_INVALID_INPUT, message)
-    }
-
-    private fun replyAccessDenied(event: SlashCommandInteractionEvent, message: String) {
-        replyError(event, DiscordErrorCode.ACCESS_DENIED, message)
-    }
-
-    private fun replyError(event: SlashCommandInteractionEvent, code: DiscordErrorCode, message: String) {
-        val payload = DiscordErrorFormatter.format(
-            DiscordErrorResponse(
-                code = code,
-                message = message,
-                retryable = false,
-            ),
-        )
-        event.reply(payload)
-            .setEphemeral(true)
-            .queue()
     }
 
     companion object {

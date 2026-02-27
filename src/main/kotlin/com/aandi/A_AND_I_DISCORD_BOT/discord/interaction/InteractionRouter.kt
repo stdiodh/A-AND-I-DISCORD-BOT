@@ -16,20 +16,17 @@ class InteractionRouter(
 
     override fun onButtonInteraction(event: ButtonInteractionEvent) {
         val prefix = extractPrefix(event.componentId) ?: return
-        val handler = findHandler(prefix) ?: return
-        handler.onButton(event)
+        dispatchButton(prefix, event)
     }
 
     override fun onStringSelectInteraction(event: StringSelectInteractionEvent) {
         val prefix = extractPrefix(event.componentId) ?: return
-        val handler = findHandler(prefix) ?: return
-        handler.onStringSelect(event)
+        dispatchStringSelect(prefix, event)
     }
 
     override fun onModalInteraction(event: ModalInteractionEvent) {
         val prefix = extractPrefix(event.modalId) ?: return
-        val handler = findHandler(prefix) ?: return
-        handler.onModal(event)
+        dispatchModal(prefix, event)
     }
 
     private fun extractPrefix(id: String?): String? {
@@ -44,8 +41,24 @@ class InteractionRouter(
             .lowercase(Locale.ROOT)
     }
 
-    private fun findHandler(prefix: String): InteractionPrefixHandler? {
-        return handlers.firstOrNull { it.supports(prefix) }
+    private fun dispatchButton(prefix: String, event: ButtonInteractionEvent) {
+        handlers
+            .asSequence()
+            .filter { it.supports(prefix) }
+            .firstOrNull { it.onButton(event) }
+    }
+
+    private fun dispatchStringSelect(prefix: String, event: StringSelectInteractionEvent) {
+        handlers
+            .asSequence()
+            .filter { it.supports(prefix) }
+            .firstOrNull { it.onStringSelect(event) }
+    }
+
+    private fun dispatchModal(prefix: String, event: ModalInteractionEvent) {
+        handlers
+            .asSequence()
+            .filter { it.supports(prefix) }
+            .firstOrNull { it.onModal(event) }
     }
 }
-
