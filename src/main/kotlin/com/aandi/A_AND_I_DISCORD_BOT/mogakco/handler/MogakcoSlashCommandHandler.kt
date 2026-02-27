@@ -205,7 +205,15 @@ class MogakcoSlashCommandHandler(
         }
 
         val rows = leaderboard.entries.mapIndexed { index, entry ->
-            "${index + 1}. <@${entry.userId}> - ${durationFormatter.toHourMinute(entry.totalSeconds)}"
+            val medal = when (index) {
+                0 -> "🥇"
+                1 -> "🥈"
+                2 -> "🥉"
+                else -> "🏅"
+            }
+            val maxSeconds = leaderboard.entries.first().totalSeconds.coerceAtLeast(1L)
+            val bar = progressBar(entry.totalSeconds.toDouble() / maxSeconds.toDouble(), 8)
+            "$medal <@${entry.userId}> - ${durationFormatter.toHourMinute(entry.totalSeconds)} $bar"
         }
 
         event.reply("${periodLabel(period)} 모각코 랭킹\n${rows.joinToString(separator = "\\n")}")
@@ -233,10 +241,10 @@ class MogakcoSlashCommandHandler(
         )
 
         val message = buildString {
-            appendLine("${periodLabel(period)} 내 모각코 통계")
-            appendLine("- 누적시간: ${durationFormatter.toHourMinute(stats.totalSeconds)}")
-            appendLine("- 참여일수: ${stats.activeDays}/${stats.totalDays}일 (기준 ${stats.activeMinutesThreshold}분)")
-            append("- 참여율: ${formatPercent(stats.participationRate)}")
+            appendLine("${periodLabel(period)} 내 모각코 통계 📈")
+            appendLine("⏱ 누적시간: ${durationFormatter.toHourMinute(stats.totalSeconds)}")
+            appendLine("📅 참여일수: ${stats.activeDays}/${stats.totalDays}일 (기준 ${stats.activeMinutesThreshold}분)")
+            append("📊 참여율: ${formatPercent(stats.participationRate)} ${progressBar(stats.participationRate, 10)}")
         }
 
         event.reply(message)
@@ -261,6 +269,13 @@ class MogakcoSlashCommandHandler(
     }
 
     private fun formatPercent(rate: Double): String = String.format(Locale.US, "%.1f%%", rate * 100.0)
+
+    private fun progressBar(rate: Double, size: Int): String {
+        val clamped = rate.coerceIn(0.0, 1.0)
+        val filled = (clamped * size).toInt()
+        val empty = size - filled
+        return "▓".repeat(filled) + "░".repeat(empty)
+    }
 
     private fun isSubcommand(
         event: SlashCommandInteractionEvent,

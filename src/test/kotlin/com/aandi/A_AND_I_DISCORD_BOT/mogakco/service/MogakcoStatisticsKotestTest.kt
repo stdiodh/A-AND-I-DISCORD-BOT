@@ -14,9 +14,11 @@ import io.kotest.matchers.shouldBe
 import io.mockk.clearAllMocks
 import io.mockk.every
 import io.mockk.mockk
+import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.ZonedDateTime
 import java.util.Optional
 
@@ -26,13 +28,15 @@ class MogakcoStatisticsKotestTest : FunSpec({
     val mogakcoChannelRepository = mockk<MogakcoChannelRepository>()
     val voiceSessionRepository = mockk<VoiceSessionRepository>()
     val permissionChecker = mockk<PermissionChecker>()
-    val periodCalculator = PeriodCalculator("Asia/Seoul")
+    val testClock = Clock.fixed(Instant.parse("2026-02-24T03:00:00Z"), ZoneOffset.UTC)
+    val periodCalculator = PeriodCalculator("Asia/Seoul", testClock)
     val service = MogakcoService(
         guildConfigRepository = guildConfigRepository,
         mogakcoChannelRepository = mogakcoChannelRepository,
         voiceSessionRepository = voiceSessionRepository,
         periodCalculator = periodCalculator,
         permissionChecker = permissionChecker,
+        clock = testClock,
     )
 
     beforeTest {
@@ -187,6 +191,39 @@ class MogakcoStatisticsKotestTest : FunSpec({
 
         result.totalSeconds shouldBe 2400L
         result.activeDays shouldBe 1
+    }
+
+    test("참여율-23시50분부터 00시10분 세션은 기준 30분에서 참여일 0일이다") {
+        val guildId = 506L
+        val userId = 31L
+        val now = Instant.parse("2026-02-11T03:00:00Z")
+        val window = periodCalculator.currentWindow(PeriodType.MONTH, now)
+        val zoneId = ZoneId.of("Asia/Seoul")
+        val joinedAt = ZonedDateTime.of(2026, 2, 10, 23, 50, 0, 0, zoneId).toInstant()
+        val leftAt = ZonedDateTime.of(2026, 2, 11, 0, 10, 0, 0, zoneId).toInstant()
+        val sessions = listOf(
+            session(
+                guildId = guildId,
+                userId = userId,
+                joinedAt = joinedAt,
+                leftAt = leftAt,
+            ),
+        )
+
+        every {
+            voiceSessionRepository.findSessionsInRange(guildId, window.startInclusive, window.measureEndExclusive)
+        } returns sessions
+        every { guildConfigRepository.findById(guildId) } returns Optional.of(
+            GuildConfig(
+                guildId = guildId,
+                mogakcoActiveMinutes = 30,
+            ),
+        )
+
+        val result = service.getMyStats(guildId = guildId, userId = userId, period = PeriodType.MONTH, now = now)
+
+        result.totalSeconds shouldBe 1200L
+        result.activeDays shouldBe 0
     }
 }) {
     companion object {

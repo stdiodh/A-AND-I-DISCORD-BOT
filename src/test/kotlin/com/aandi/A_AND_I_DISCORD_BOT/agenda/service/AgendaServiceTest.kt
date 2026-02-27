@@ -14,8 +14,10 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
+import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneOffset
 
 class AgendaServiceTest : FunSpec({
 
@@ -23,11 +25,13 @@ class AgendaServiceTest : FunSpec({
     val guildConfigRepository = mockk<GuildConfigRepository>()
     val periodCalculator = mockk<PeriodCalculator>()
     val permissionChecker = mockk<PermissionChecker>()
+    val fixedClock = Clock.fixed(Instant.parse("2026-02-24T03:00:00Z"), ZoneOffset.UTC)
     val service = AgendaService(
         agendaLinkRepository = agendaLinkRepository,
         guildConfigRepository = guildConfigRepository,
         periodCalculator = periodCalculator,
         permissionChecker = permissionChecker,
+        clock = fixedClock,
     )
 
     val guildId = 1000L

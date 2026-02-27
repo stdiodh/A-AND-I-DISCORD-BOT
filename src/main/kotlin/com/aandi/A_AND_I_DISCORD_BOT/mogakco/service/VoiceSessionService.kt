@@ -6,6 +6,7 @@ import com.aandi.A_AND_I_DISCORD_BOT.mogakco.repository.VoiceSessionRepository
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 
@@ -13,6 +14,7 @@ import java.time.Instant
 class VoiceSessionService(
     private val mogakcoChannelRepository: MogakcoChannelRepository,
     private val voiceSessionRepository: VoiceSessionRepository,
+    private val clock: Clock,
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -69,7 +71,10 @@ class VoiceSessionService(
     }
 
     @Transactional
-    fun closeOpenSessionsAtStartup(now: Instant = Instant.now()): Int {
+    fun closeOpenSessionsAtStartup(): Int = closeOpenSessionsAtStartup(Instant.now(clock))
+
+    @Transactional
+    fun closeOpenSessionsAtStartup(now: Instant): Int {
         val openSessions = voiceSessionRepository.findByLeftAtIsNull()
         openSessions.forEach { closeSession(it, now) }
         return openSessions.size

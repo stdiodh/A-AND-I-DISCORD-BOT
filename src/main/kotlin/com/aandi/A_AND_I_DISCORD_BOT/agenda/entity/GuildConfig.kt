@@ -20,4 +20,10 @@ class GuildConfig(
 
     @Column(name = "mogakco_active_minutes", nullable = false)
     var mogakcoActiveMinutes: Int = 30,
+
+    @Column(name = "dashboard_channel_id")
+    var dashboardChannelId: Long? = null,
+
+    @Column(name = "dashboard_message_id")
+    var dashboardMessageId: Long? = null,
 )

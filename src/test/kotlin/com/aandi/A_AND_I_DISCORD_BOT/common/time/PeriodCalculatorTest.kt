@@ -1,12 +1,14 @@
 package com.aandi.A_AND_I_DISCORD_BOT.common.time
 
 import org.junit.jupiter.api.Test
+import java.time.Clock
 import java.time.Instant
+import java.time.ZoneOffset
 import kotlin.test.assertEquals
 
 class PeriodCalculatorTest {
 
-    private val periodCalculator = PeriodCalculator("Asia/Seoul")
+    private val periodCalculator = PeriodCalculator("Asia/Seoul", Clock.system(ZoneOffset.UTC))
 
     @Test
     fun `week window starts monday and ends next monday in Asia Seoul`() {

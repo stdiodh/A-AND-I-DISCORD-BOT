@@ -7,11 +7,13 @@ import net.dv8tion.jda.api.events.guild.voice.GuildVoiceUpdateEvent
 import net.dv8tion.jda.api.hooks.ListenerAdapter
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
+import java.time.Clock
 import java.time.Instant
 
 @Component
 class VoiceStateIngestionListener(
     private val voiceSessionService: VoiceSessionService,
+    private val clock: Clock,
 ) : ListenerAdapter() {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -26,7 +28,7 @@ class VoiceStateIngestionListener(
             userId = event.member.idLong,
             oldChannelId = event.channelLeft?.idLong,
             newChannelId = event.channelJoined?.idLong,
-            occurredAt = Instant.now(),
+            occurredAt = Instant.now(clock),
         )
         val outcome = voiceSessionService.ingest(transition)
         if (outcome == VoiceEventOutcome.Ignored) {

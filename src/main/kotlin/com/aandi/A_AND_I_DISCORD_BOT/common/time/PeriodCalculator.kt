@@ -2,6 +2,7 @@ package com.aandi.A_AND_I_DISCORD_BOT.common.time
 
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
+import java.time.Clock
 import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
@@ -12,13 +13,18 @@ import java.time.temporal.TemporalAdjusters
 @Component
 class PeriodCalculator(
     @Value("\${app.timezone:Asia/Seoul}") timezone: String,
+    private val clock: Clock,
 ) {
 
     val zoneId: ZoneId = ZoneId.of(timezone)
 
-    fun today(now: Instant = Instant.now()): LocalDate = now.atZone(zoneId).toLocalDate()
+    fun today(): LocalDate = today(Instant.now(clock))
 
-    fun currentWindow(periodType: PeriodType, now: Instant = Instant.now()): PeriodWindow {
+    fun today(now: Instant): LocalDate = now.atZone(zoneId).toLocalDate()
+
+    fun currentWindow(periodType: PeriodType): PeriodWindow = currentWindow(periodType, Instant.now(clock))
+
+    fun currentWindow(periodType: PeriodType, now: Instant): PeriodWindow {
         val nowZoned = now.atZone(zoneId)
         val startDate = startDate(periodType, nowZoned.toLocalDate())
         val endDate = endDate(periodType, startDate)

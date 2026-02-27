@@ -8,6 +8,7 @@ import com.aandi.A_AND_I_DISCORD_BOT.common.time.PeriodCalculator
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.net.URI
+import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
 
@@ -17,6 +18,7 @@ class AgendaService(
     private val guildConfigRepository: GuildConfigRepository,
     private val periodCalculator: PeriodCalculator,
     private val permissionChecker: PermissionChecker,
+    private val clock: Clock,
 ) {
 
     @Transactional
@@ -43,8 +45,8 @@ class AgendaService(
             is TitleValidationResult.Valid -> titleResult.value
         }
         guildConfigRepository.createDefaultIfAbsent(guildId)
-        val today = periodCalculator.today()
-        val now = Instant.now()
+        val now = Instant.now(clock)
+        val today = periodCalculator.today(now)
         val existing = agendaLinkRepository.findByGuildIdAndDateLocal(guildId, today)
 
         val agenda = existing ?: AgendaLink(
@@ -70,7 +72,7 @@ class AgendaService(
 
     @Transactional(readOnly = true)
     fun getTodayAgenda(guildId: Long): AgendaView? {
-        val today = periodCalculator.today()
+        val today = periodCalculator.today(Instant.now(clock))
         val agenda = agendaLinkRepository.findByGuildIdAndDateLocal(guildId, today) ?: return null
         return AgendaView(
             title = agenda.title,
@@ -85,7 +87,7 @@ class AgendaService(
             return RecentAgendaResult.InvalidDays
         }
 
-        val today = periodCalculator.today()
+        val today = periodCalculator.today(Instant.now(clock))
         val startDate = today.minusDays(days.toLong() - 1L)
         val agendas = agendaLinkRepository.findByGuildIdAndDateLocalBetweenOrderByDateLocalDesc(
             guildId = guildId,

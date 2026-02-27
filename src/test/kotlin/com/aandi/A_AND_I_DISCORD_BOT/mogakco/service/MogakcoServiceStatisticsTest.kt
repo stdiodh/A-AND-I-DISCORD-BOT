@@ -10,9 +10,11 @@ import com.aandi.A_AND_I_DISCORD_BOT.mogakco.repository.MogakcoChannelRepository
 import com.aandi.A_AND_I_DISCORD_BOT.mogakco.repository.VoiceSessionRepository
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
+import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.ZonedDateTime
 import java.util.Optional
 import kotlin.test.assertEquals
@@ -23,7 +25,8 @@ class MogakcoServiceStatisticsTest {
     private val mogakcoChannelRepository: MogakcoChannelRepository = Mockito.mock(MogakcoChannelRepository::class.java)
     private val voiceSessionRepository: VoiceSessionRepository = Mockito.mock(VoiceSessionRepository::class.java)
     private val permissionChecker: PermissionChecker = Mockito.mock(PermissionChecker::class.java)
-    private val periodCalculator = PeriodCalculator("Asia/Seoul")
+    private val testClock = Clock.fixed(Instant.parse("2026-02-24T03:00:00Z"), ZoneOffset.UTC)
+    private val periodCalculator = PeriodCalculator("Asia/Seoul", testClock)
 
     private val service = MogakcoService(
         guildConfigRepository = guildConfigRepository,
@@ -31,6 +34,7 @@ class MogakcoServiceStatisticsTest {
         voiceSessionRepository = voiceSessionRepository,
         periodCalculator = periodCalculator,
         permissionChecker = permissionChecker,
+        clock = testClock,
     )
 
     @Test

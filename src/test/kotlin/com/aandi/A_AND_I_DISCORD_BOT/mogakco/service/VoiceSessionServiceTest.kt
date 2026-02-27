@@ -11,8 +11,10 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
+import java.time.Clock
 import java.time.Duration
 import java.time.Instant
+import java.time.ZoneOffset
 
 class VoiceSessionServiceTest : FunSpec({
 
@@ -21,6 +23,7 @@ class VoiceSessionServiceTest : FunSpec({
     val service = VoiceSessionService(
         mogakcoChannelRepository = mogakcoChannelRepository,
         voiceSessionRepository = voiceSessionRepository,
+        clock = Clock.fixed(Instant.parse("2026-02-24T03:00:00Z"), ZoneOffset.UTC),
     )
 
     val guildId = 1000L
