@@ -44,15 +44,16 @@ class AssignmentTaskRepositoryConcurrencyIntegrationTest(
         jdbcTemplate.update(
             """
             INSERT INTO assignment_tasks (
-              guild_id, channel_id, title, verify_url, remind_at,
+              guild_id, channel_id, title, verify_url, remind_at, due_at,
               status, created_by, created_at, updated_at, notified_at
-            ) VALUES (?, ?, ?, ?, ?, 'PENDING', ?, ?, ?, NULL)
+            ) VALUES (?, ?, ?, ?, ?, ?, 'PENDING', ?, ?, ?, NULL)
             """.trimIndent(),
             1001L,
             2002L,
             "동시성 테스트 과제",
             "https://example.com/task",
             Timestamp.from(now.minusSeconds(30)),
+            Timestamp.from(now.plusSeconds(3600)),
             3003L,
             Timestamp.from(now.minusSeconds(90)),
             Timestamp.from(now.minusSeconds(90)),

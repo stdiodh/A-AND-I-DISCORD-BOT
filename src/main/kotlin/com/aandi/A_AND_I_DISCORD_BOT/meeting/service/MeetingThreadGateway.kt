@@ -58,7 +58,7 @@ class MeetingThreadGateway(
 
         val agenda = agendaService.getTodayAgenda(guildId)
         if (agenda == null) {
-            thread.sendMessage("$template\n\n오늘 안건 링크가 아직 등록되지 않았습니다.")
+            thread.sendMessage("$template\n\n오늘 안건 링크가 아직 등록되지 않았습니다.\n`/회의 안건등록 링크:<URL>` 또는 아래 버튼으로 먼저 설정해 주세요.")
                 .setComponents(ActionRow.of(Button.secondary("dash:agenda_set", "안건 설정")))
                 .queue()
             return
@@ -130,8 +130,12 @@ class MeetingThreadGateway(
         runCatching { thread.sendMessageEmbeds(embed).complete() }
     }
 
-    fun archiveThread(thread: ThreadChannel) {
-        runCatching { thread.manager.setArchived(true).complete() }
+    fun archiveThread(thread: ThreadChannel): Boolean {
+        if (thread.isArchived) {
+            return true
+        }
+        val result = runCatching { thread.manager.setArchived(true).complete() }
+        return result.isSuccess
     }
 
     private fun toBullet(items: List<String>, fallback: String): String {

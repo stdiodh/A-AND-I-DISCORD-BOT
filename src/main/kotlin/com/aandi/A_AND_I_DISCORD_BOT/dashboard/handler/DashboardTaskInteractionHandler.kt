@@ -69,26 +69,36 @@ class DashboardTaskInteractionHandler(
     private fun showTaskModal(event: ButtonInteractionEvent) {
         val title = TextInput.create("제목", TextInputStyle.SHORT)
             .setRequired(true)
+            .setPlaceholder("예) 3주차 API 과제 제출")
             .setMaxLength(200)
             .build()
         val link = TextInput.create("링크", TextInputStyle.SHORT)
             .setRequired(true)
+            .setPlaceholder("예) https://lms.example.com/tasks/123")
             .setMaxLength(500)
             .build()
         val remindAt = TextInput.create("알림시각", TextInputStyle.SHORT)
             .setRequired(true)
+            .setPlaceholder("예) 2026-03-01 21:30")
+            .setMaxLength(19)
+            .build()
+        val dueAt = TextInput.create("마감시각", TextInputStyle.SHORT)
+            .setRequired(true)
+            .setPlaceholder("예) 2026-03-02 23:59")
             .setMaxLength(19)
             .build()
         val channelId = TextInput.create("채널", TextInputStyle.SHORT)
             .setRequired(false)
+            .setPlaceholder("예) #과제공지 또는 123456789012345678")
             .setMaxLength(40)
             .build()
-        val modal = Modal.create(DashboardActionIds.ASSIGNMENT_MODAL, "과제 등록")
+        val modal = Modal.create(DashboardActionIds.ASSIGNMENT_MODAL, "과제 빠른 등록")
             .addComponents(
                 Label.of("과제 제목", title),
                 Label.of("검증 링크(http/https)", link),
-                Label.of("알림시각 (예: 2026-03-01 21:30)", remindAt),
-                Label.of("채널(선택, #멘션 또는 ID)", channelId),
+                Label.of("알림시각(KST)", remindAt),
+                Label.of("마감시각(KST)", dueAt),
+                Label.of("채널(선택)", channelId),
             )
             .build()
         event.replyModal(modal).queue()
@@ -112,7 +122,8 @@ class DashboardTaskInteractionHandler(
         }
 
         val lines = tasks.take(10).map {
-            "• [${it.id}] ${it.title} | ${KstTime.formatInstantToKst(it.remindAt)} | <@${it.createdBy}>"
+            val role = it.notifyRoleId?.let { roleId -> "<@&$roleId>" } ?: "없음"
+            "• [${it.id}] ${it.title} | 알림:${KstTime.formatInstantToKst(it.remindAt)} | 마감:${KstTime.formatInstantToKst(it.dueAt)} | 역할:$role"
         }
         event.reply("과제 목록(최대 10건)\n${lines.joinToString("\n")}")
             .setEphemeral(true)
@@ -134,8 +145,15 @@ class DashboardTaskInteractionHandler(
         val title = event.getValue("제목")?.asString.orEmpty()
         val link = event.getValue("링크")?.asString.orEmpty()
         val remindRaw = event.getValue("알림시각")?.asString.orEmpty()
+        val dueRaw = event.getValue("마감시각")?.asString.orEmpty()
         val remindAtUtc = runCatching { KstTime.parseKstToInstant(remindRaw) }.getOrElse {
             event.reply("알림시각 형식이 올바르지 않습니다. 예: 2026-03-01 21:30")
+                .setEphemeral(true)
+                .queue()
+            return
+        }
+        val dueAtUtc = runCatching { KstTime.parseKstToInstant(dueRaw) }.getOrElse {
+            event.reply("마감시각 형식이 올바르지 않습니다. 예: 2026-03-02 23:59")
                 .setEphemeral(true)
                 .queue()
             return
@@ -149,13 +167,19 @@ class DashboardTaskInteractionHandler(
             title = title,
             verifyUrl = link,
             remindAtUtc = remindAtUtc,
+            dueAtUtc = dueAtUtc,
             createdBy = member.idLong,
             nowUtc = Instant.now(clock),
+            notifyRoleId = null,
+            preReminderHoursRaw = null,
+            closingMessageRaw = null,
         )
         when (result) {
             is AssignmentTaskService.CreateResult.Success -> {
                 val task = result.task
-                event.reply("과제를 등록했습니다. ID: ${task.id}, 알림시각(KST): ${KstTime.formatInstantToKst(task.remindAt)}")
+                event.reply(
+                    "과제를 등록했습니다. ID: ${task.id}\n알림시각(KST): ${KstTime.formatInstantToKst(task.remindAt)}\n마감시각(KST): ${KstTime.formatInstantToKst(task.dueAt)}\n※ 빠른 등록은 알림역할/종료메시지 기본값이 적용됩니다.",
+                )
                     .setEphemeral(true)
                     .queue()
             }
@@ -170,6 +194,22 @@ class DashboardTaskInteractionHandler(
 
             AssignmentTaskService.CreateResult.RemindAtMustBeFuture -> {
                 event.reply("알림시각은 현재보다 미래여야 합니다.").setEphemeral(true).queue()
+            }
+
+            AssignmentTaskService.CreateResult.DueAtMustBeFuture -> {
+                event.reply("마감시각은 현재보다 미래여야 합니다.").setEphemeral(true).queue()
+            }
+
+            AssignmentTaskService.CreateResult.DueAtMustBeAfterRemindAt -> {
+                event.reply("마감시각은 알림시각 이후여야 합니다.").setEphemeral(true).queue()
+            }
+
+            AssignmentTaskService.CreateResult.InvalidPreReminderHours -> {
+                event.reply("임박알림 형식이 올바르지 않습니다. 예: 24,3,1").setEphemeral(true).queue()
+            }
+
+            AssignmentTaskService.CreateResult.InvalidClosingMessage -> {
+                event.reply("종료메시지는 500자 이하여야 합니다.").setEphemeral(true).queue()
             }
         }
     }

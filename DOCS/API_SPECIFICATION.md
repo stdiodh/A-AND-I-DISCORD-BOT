@@ -111,9 +111,12 @@
 |--------|-----|----------|---------|----------|------|
 | SLASH | `/회의 시작` | 회의 시작 메시지 생성 후 스레드 생성 | **Options:**<br>- `채널` (TextChannel, required) | 지정 채널에 회의 시작 임베드 게시 후 `YYYY-MM-DD 회의` 스레드 생성 | ADMIN_ROLE 또는 (admin_role_id 미설정 시) Manage Server/Administrator |
 | SLASH | `/회의 종료` | 회의 요약 생성 후 세션 종료/스레드 아카이브 | 없음 | 결정/액션아이템/핵심문장 요약 임베드 게시 후 종료 임베드/아카이브 처리 | ADMIN_ROLE 또는 (admin_role_id 미설정 시) Manage Server/Administrator |
+| SLASH | `/회의 안건등록` | 오늘 회의 안건 링크 등록/수정 | **Options:**<br>- `링크` (String, required): http/https 링크<br>- `제목` (String, optional) | 등록 성공 메시지 + 링크 버튼 | ADMIN_ROLE |
+| SLASH | `/회의 안건조회` | 오늘 회의 안건 링크 조회 | 없음 | 등록된 링크 안내 + 링크 버튼 (없으면 미등록 안내) | ANY |
 
 ### 회의 시작 처리 규칙
 - `/회의 시작`은 지정 채널에 "회의 시작" 임베드를 먼저 게시하고, 그 메시지에서 스레드를 생성한다.
+- 회의 세션 생성 시점에 오늘 안건이 존재하면 `meeting_sessions.agenda_link_id`로 연결 저장한다.
 - 대시보드 버튼 `dash:meeting_start`는 동일한 회의 시작 로직을 호출한다.
 - `dash:meeting_start` 경로는 대시보드 채널(설정 시) 또는 현재 채널을 사용한다.
 - 오늘 안건이 있으면 스레드 첫 메시지에 링크 버튼(`오늘 안건 링크`)을 포함한다.
@@ -125,6 +128,7 @@
 - 핵심문장은 명령어/URL 라인을 제외한 텍스트 후보에서 추출한다.
 - 요약 임베드에는 `액션아이템 → 과제 등록` 버튼을 포함한다.
 - 종료 시 `meeting_sessions` 상태를 `ACTIVE -> ENDED`로 전이한다.
+- 종료 응답은 세션과 연결된 안건 정보(제목/링크)를 함께 노출한다.
 - 종료 시 종료 임베드를 게시하고 대상 스레드를 아카이브한다.
 
 ---
@@ -164,21 +168,26 @@
 
 ### 과제 입력 정책
 - `remind_at`은 과거 시각을 허용하지 않는다. (`remind_at <= nowUtc` 입력은 거부)
+- `due_at`은 현재 시각보다 미래여야 하며, `remind_at`보다 같거나 늦어야 한다.
 - 과제 확인 링크(`verify_url`)는 `http/https`만 허용한다.
+- 임박 알림 시간(`임박알림`)은 쉼표 구분 정수(`24,3,1`) 형식으로 입력한다. 비우면 기본값 `24,3,1`을 사용한다.
+- 종료 메시지(`종료메시지`)는 500자 이하여야 한다.
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| SLASH | `/과제 등록` | 과제 등록 모달 열기 | 없음(모달 입력 사용) | 과제 등록 모달 표시 | ADMIN_ROLE |
-| SLASH | `/과제 목록` | 과제 목록 조회 | **Options:**<br>- `상태` (optional: `대기/완료/취소` 또는 `PENDING/DONE/CANCELED`) | 과제 목록 출력 | ANY |
+| SLASH | `/과제 등록` | 과제 등록 | **Options:**<br>- `제목` (String, required)<br>- `링크` (String, required, http/https)<br>- `알림시각` (String, required, KST)<br>- `마감시각` (String, required, KST)<br>- `채널` (TextChannel, optional)<br>- `알림역할` (Role, optional)<br>- `임박알림` (String, optional, 예: 24,3,1)<br>- `종료메시지` (String, optional) | 등록 결과(과제ID/알림·마감시각/역할) 출력 | ADMIN_ROLE |
+| SLASH | `/과제 목록` | 과제 목록 조회 | **Options:**<br>- `상태` (optional: `대기/완료/취소/종료` 또는 `PENDING/DONE/CANCELED/CLOSED`) | 과제 목록 출력 | ANY |
 | SLASH | `/과제 상세` | 과제 상세 조회 | **Options:**<br>- `과제아이디` (Long, required) | 과제 상세 출력(ephemeral 권장) | ANY |
 | SLASH | `/과제 완료` | 과제 완료 처리 | **Options:**<br>- `과제아이디` (Long, required) | 완료 처리 결과 출력 | ADMIN_ROLE |
 | SLASH | `/과제 삭제` | 과제 삭제(또는 취소) 처리 | **Options:**<br>- `과제아이디` (Long, required) | 삭제 처리 결과 출력 | ADMIN_ROLE |
 
-### 과제 등록 모달 입력
-- `제목`: 과제 제목
-- `링크`: 검증 링크(http/https)
+### 과제 빠른 등록 모달(대시보드 버튼)
+- `제목`: 예 `3주차 API 과제 제출`
+- `링크`: 예 `https://lms.example.com/tasks/123`
 - `알림시각`: 예 `2026-03-01 21:30` (KST)
-- `채널`: 선택 입력. `#채널멘션` 또는 채널 ID. 비우면 현재 채널
+- `마감시각`: 예 `2026-03-02 23:59` (KST)
+- `채널`: 예 `#과제공지` 또는 `123456789012345678`
+- 빠른 등록은 `알림역할/종료메시지` 기본값(없음)으로 생성한다.
 
 ---
 
@@ -208,7 +217,7 @@
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| SLASH | `/설정 운영진역할` | 운영진 역할 ID를 길드 설정에 저장 | **Options:**<br>- `역할` (Role, required) | 설정 완료 메시지 (ephemeral) | ADMIN_ROLE 또는 Manage Server/Administrator |
+| SLASH | `/설정 운영진역할` | 운영진 역할 ID를 길드 설정에 저장 | **Options:**<br>- `대상역할` (Role, required) | 설정 완료 메시지 (ephemeral) | ADMIN_ROLE 또는 Manage Server/Administrator |
 | SLASH | `/설정 운영진해제` | 운영진 역할 설정을 해제(`admin_role_id = null`) | 없음 | 해제 완료 메시지 (ephemeral) | ADMIN_ROLE 또는 Manage Server/Administrator |
 | SLASH | `/설정 운영진조회` | 현재 운영진 역할 설정 조회 | 없음 | 현재 운영진 역할 정보 출력. 미설정 시 설정 가이드 안내(권장: ephemeral) | ANY |
 
@@ -276,21 +285,29 @@
 - `title` (VARCHAR(200) NOT NULL)
 - `verify_url` (TEXT NOT NULL)
 - `remind_at` (TIMESTAMPTZ NOT NULL, UTC 저장)
-- `status` (VARCHAR(16) NOT NULL, `PENDING`/`DONE`/`CANCELED`)
+- `due_at` (TIMESTAMPTZ NOT NULL, UTC 저장)
+- `notify_role_id` (BIGINT NULL)
+- `pre_remind_hours_json` (TEXT NULL, 예: `[24,3,1]`)
+- `pre_notified_json` (TEXT NULL, 이미 발송한 임박알림 시간 기록)
+- `closing_message` (TEXT NULL)
+- `closed_at` (TIMESTAMPTZ NULL)
+- `status` (VARCHAR(16) NOT NULL, `PENDING`/`DONE`/`CANCELED`/`CLOSED`)
 - `created_by` (BIGINT NOT NULL)
 - `created_at` (TIMESTAMPTZ NOT NULL DEFAULT NOW())
 - `updated_at` (TIMESTAMPTZ NOT NULL DEFAULT NOW())
 - `notified_at` (TIMESTAMPTZ NULL)
-- CHECK(`status IN ('PENDING','DONE','CANCELED')`)
+- CHECK(`status IN ('PENDING','DONE','CANCELED','CLOSED')`)
 - CHECK(`BTRIM(title) <> ''`)
 - CHECK(`BTRIM(verify_url) <> ''`)
 - INDEX(`status`, `remind_at`, `notified_at`)
 - INDEX(`guild_id`, `status`, `remind_at`)
+- INDEX(`status`, `due_at`, `closed_at`)
 
 ### meeting_sessions
 - `id` (BIGSERIAL PK)
 - `guild_id` (BIGINT NOT NULL, FK -> `guild_config.guild_id`)
 - `thread_id` (BIGINT NOT NULL, UNIQUE)
+- `agenda_link_id` (BIGINT NULL, FK -> `agenda_links.id`)
 - `status` (VARCHAR(16) NOT NULL, `ACTIVE`/`ENDED`)
 - `started_by` (BIGINT NOT NULL)
 - `started_at` (TIMESTAMPTZ NOT NULL)
@@ -322,21 +339,23 @@
 - INDEX(`status`, `updated_at DESC`)
 
 ### 과제 스케줄러 조회 규칙
-- due task 조회는 `SELECT ... FOR UPDATE SKIP LOCKED`를 사용해 동시성 충돌을 방지한다.
-- 조회 조건:
-  - `status = 'PENDING'`
-  - `notified_at IS NULL`
-  - `remind_at <= nowUtc`
-  - `remind_at >= graceStartUtc` (지연 발송 허용 범위)
+- `SELECT ... FOR UPDATE SKIP LOCKED` 기반으로 단계별 후보를 잠금 조회한다.
+- 처리 단계:
+  - 초기 알림: `notified_at IS NULL` AND `remind_at <= nowUtc`
+  - 임박 알림: `due_at > nowUtc` AND `due_at <= nowUtc + pre-scan-hours` AND `pre_remind_hours_json IS NOT NULL`
+  - 마감 알림: `closed_at IS NULL` AND `due_at <= nowUtc`
 - `fixedDelay` 폴링으로 1건씩 잠금/전송/갱신을 반복 처리한다.
 - 기본값:
   - `poll-delay-ms = 30000` (30초)
   - `grace-hours = 24` (최근 24시간 누락 알림 지연 발송)
   - `max-per-tick = 20` (tick당 최대 20건)
+  - `pre-scan-hours = 24` (임박 알림 후보 조회 범위)
 
 ### 과제 알림 실패 정책
 - 전송 성공 시에만 `notified_at`을 갱신한다.
-- 일시 실패(retryable): `notified_at` 미갱신, 다음 tick에서 재시도한다.
+- 임박 알림 성공 시 `pre_notified_json`에 발송 시간(`hoursBeforeDue`)을 기록한다.
+- 마감 알림 성공 시 `status = CLOSED`, `closed_at`을 갱신한다.
+- 일시 실패(retryable): 상태 갱신 없이 다음 tick에서 재시도한다.
 - 비복구 실패(non-retryable, 예: 채널 없음/권한 없음): 로그를 남기고 `status = CANCELED`로 전환한다.
 
 ---

@@ -39,6 +39,69 @@ interface AssignmentTaskRepository : JpaRepository<AssignmentTaskEntity, Long> {
         @Param("limit") limit: Int,
     ): List<AssignmentTaskEntity>
 
+    @Query(
+        value = """
+            SELECT *
+            FROM assignment_tasks
+            WHERE status = 'PENDING'
+              AND notified_at IS NULL
+              AND remind_at <= :nowUtc
+              AND remind_at >= :graceStartUtc
+            ORDER BY remind_at ASC
+            LIMIT :limit
+            FOR UPDATE SKIP LOCKED
+        """,
+        nativeQuery = true,
+    )
+    fun lockInitialReminderTasks(
+        @Param("nowUtc") nowUtc: Instant,
+        @Param("graceStartUtc") graceStartUtc: Instant,
+        @Param("limit") limit: Int,
+    ): List<AssignmentTaskEntity>
+
+    @Query(
+        value = """
+            SELECT *
+            FROM assignment_tasks
+            WHERE status = 'PENDING'
+              AND closed_at IS NULL
+              AND due_at <= :nowUtc
+              AND due_at >= :graceStartUtc
+            ORDER BY due_at ASC
+            LIMIT :limit
+            FOR UPDATE SKIP LOCKED
+        """,
+        nativeQuery = true,
+    )
+    fun lockDueClosingTasks(
+        @Param("nowUtc") nowUtc: Instant,
+        @Param("graceStartUtc") graceStartUtc: Instant,
+        @Param("limit") limit: Int,
+    ): List<AssignmentTaskEntity>
+
+    @Query(
+        value = """
+            SELECT *
+            FROM assignment_tasks
+            WHERE status = 'PENDING'
+              AND closed_at IS NULL
+              AND due_at > :nowUtc
+              AND due_at <= :scanEndUtc
+              AND due_at >= :graceStartUtc
+              AND pre_remind_hours_json IS NOT NULL
+            ORDER BY due_at ASC
+            LIMIT :limit
+            FOR UPDATE SKIP LOCKED
+        """,
+        nativeQuery = true,
+    )
+    fun lockPreReminderCandidates(
+        @Param("nowUtc") nowUtc: Instant,
+        @Param("scanEndUtc") scanEndUtc: Instant,
+        @Param("graceStartUtc") graceStartUtc: Instant,
+        @Param("limit") limit: Int,
+    ): List<AssignmentTaskEntity>
+
     @Modifying
     @Query(
         value = """
@@ -64,7 +127,6 @@ interface AssignmentTaskRepository : JpaRepository<AssignmentTaskEntity, Long> {
                 updated_at = :updatedAtUtc
             WHERE id = :taskId
               AND status = 'PENDING'
-              AND notified_at IS NULL
         """,
         nativeQuery = true,
     )

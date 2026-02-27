@@ -39,8 +39,9 @@ class MeetingSummaryExtractor {
         .filter { it.isNotBlank() }
 
     private fun extractDecision(line: String): String? {
+        val normalized = normalizePrefix(line)
         DECISION_PATTERNS.forEach { pattern ->
-            val match = pattern.find(line)
+            val match = pattern.find(normalized)
             if (match != null) {
                 return match.groupValues[1].trim()
             }
@@ -49,8 +50,9 @@ class MeetingSummaryExtractor {
     }
 
     private fun extractActionItem(line: String): String? {
+        val normalized = normalizePrefix(line)
         ACTION_PATTERNS.forEach { pattern ->
-            val match = pattern.find(line)
+            val match = pattern.find(normalized)
             if (match != null) {
                 return match.groupValues[1].trim()
             }
@@ -71,6 +73,10 @@ class MeetingSummaryExtractor {
         return true
     }
 
+    private fun normalizePrefix(line: String): String {
+        return line.replace(PREFIX_PATTERN, "").trim()
+    }
+
     data class MeetingMessage(
         val authorId: Long,
         val content: String,
@@ -88,13 +94,15 @@ class MeetingSummaryExtractor {
         private const val MAX_ACTION_ITEMS = 8
         private const val MAX_HIGHLIGHTS = 5
 
+        private val PREFIX_PATTERN = Regex("""^(?:>\s*)?(?:[-*•]\s*)?""")
+
         private val DECISION_PATTERNS = listOf(
             Regex("^(?:결정|결론|합의|decision)\\s*[:：-]\\s*(.+)$", RegexOption.IGNORE_CASE),
         )
 
         private val ACTION_PATTERNS = listOf(
             Regex("^(?:액션|할일|todo|action\\s*item|task)\\s*[:：-]\\s*(.+)$", RegexOption.IGNORE_CASE),
-            Regex("^-\\s*\\[ \\]\\s*(.+)$"),
+            Regex("^(?:-\\s*)?\\[ \\]\\s*(.+)$"),
         )
     }
 }

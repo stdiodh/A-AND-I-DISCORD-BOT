@@ -39,6 +39,21 @@ class MeetingSummaryExtractorTest : FunSpec({
         summary.highlights.size shouldBe 2
         summary.highlights.first().contains("모각코 집계 정확도") shouldBe true
     }
+
+    test("인용/불릿 접두어가 있어도 결정과 액션을 추출한다") {
+        val extractor = MeetingSummaryExtractor()
+        val messages = listOf(
+            message("> 결정: 다음 주 목요일에 QA 완료"),
+            message("• 액션: 지수 - 회귀 테스트 케이스 보강"),
+            message("> - [ ] 민호: 배포 승인 체크"),
+        )
+
+        val summary = extractor.extract(messages)
+
+        summary.decisions shouldContain "다음 주 목요일에 QA 완료"
+        summary.actionItems shouldContain "지수 - 회귀 테스트 케이스 보강"
+        summary.actionItems shouldContain "민호: 배포 승인 체크"
+    }
 }) {
     companion object {
         private fun message(content: String): MeetingSummaryExtractor.MeetingMessage =

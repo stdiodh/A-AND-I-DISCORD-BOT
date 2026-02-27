@@ -1,6 +1,8 @@
 package com.aandi.A_AND_I_DISCORD_BOT.meeting.service
 
 import com.aandi.A_AND_I_DISCORD_BOT.admin.service.GuildConfigService
+import com.aandi.A_AND_I_DISCORD_BOT.agenda.repository.AgendaLinkRepository
+import com.aandi.A_AND_I_DISCORD_BOT.common.time.PeriodCalculator
 import com.aandi.A_AND_I_DISCORD_BOT.meeting.entity.MeetingSessionEntity
 import com.aandi.A_AND_I_DISCORD_BOT.meeting.entity.MeetingSessionStatus
 import com.aandi.A_AND_I_DISCORD_BOT.meeting.repository.MeetingSessionRepository
@@ -14,6 +16,8 @@ import java.time.ZoneId
 @ConditionalOnProperty(name = ["discord.enabled"], havingValue = "true", matchIfMissing = true)
 class MeetingStartUseCase(
     private val guildConfigService: GuildConfigService,
+    private val agendaLinkRepository: AgendaLinkRepository,
+    private val periodCalculator: PeriodCalculator,
     private val meetingSessionRepository: MeetingSessionRepository,
     private val meetingThreadGateway: MeetingThreadGateway,
     private val clock: Clock,
@@ -38,14 +42,16 @@ class MeetingStartUseCase(
         val channelId = targetChannelId ?: dashboard.channelId ?: fallbackChannelId ?: return MeetingService.StartResult.ChannelNotConfigured
         val channel = meetingThreadGateway.findTextChannel(channelId) ?: return MeetingService.StartResult.ChannelNotFound
         val nowUtc = Instant.now(clock)
+        val todayAgenda = agendaLinkRepository.findByGuildIdAndDateLocal(guildId, periodCalculator.today(nowUtc))
         val startMessage = meetingThreadGateway.createStartMessage(channel, requestedBy, nowUtc)
         val thread = meetingThreadGateway.createThread(startMessage, resolveThreadName(rawTitle))
             ?: return MeetingService.StartResult.ThreadCreateFailed
 
-        meetingSessionRepository.save(
+        val savedSession = meetingSessionRepository.save(
             MeetingSessionEntity(
                 guildId = guildId,
                 threadId = thread.idLong,
+                agendaLinkId = todayAgenda?.id,
                 status = MeetingSessionStatus.ACTIVE,
                 startedBy = requestedBy,
                 startedAt = nowUtc,
@@ -53,9 +59,14 @@ class MeetingStartUseCase(
                 updatedAt = nowUtc,
             ),
         )
+        val sessionId = savedSession.id ?: return MeetingService.StartResult.ThreadCreateFailed
 
         meetingThreadGateway.postMeetingTemplate(guildId, thread)
-        return MeetingService.StartResult.Success(thread.idLong, thread.name)
+        return MeetingService.StartResult.Success(
+            sessionId = sessionId,
+            threadId = thread.idLong,
+            threadName = thread.name,
+        )
     }
 
     private fun resolveThreadName(rawTitle: String?): String {
