@@ -17,7 +17,7 @@ object HomeCustomIdParser {
 
         val domain = tokens[1]
         val action = tokens[2]
-        val tail = if (tokens.size > 3) tokens.subList(3, tokens.size) else emptyList()
+        val tail = tokens.drop(3)
         return ParsedCustomId(
             domain = domain,
             action = action,

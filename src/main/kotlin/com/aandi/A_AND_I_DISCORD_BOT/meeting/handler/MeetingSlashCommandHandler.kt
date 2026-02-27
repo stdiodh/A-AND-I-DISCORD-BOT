@@ -97,7 +97,9 @@ class MeetingSlashCommandHandler(
         }
 
         val requestedThreadId = parseThreadId(event.getOption(OPTION_THREAD_ID_KO)?.asString)
-        val fallbackThreadId = if (event.channelType.isThread) event.channel.idLong else null
+        val fallbackThreadId = event.channel
+            .takeIf { event.channelType.isThread }
+            ?.idLong
         when (
             val result = meetingService.endMeeting(
                 guildId = guild.idLong,

@@ -205,12 +205,7 @@ class MogakcoSlashCommandHandler(
         }
 
         val rows = leaderboard.entries.mapIndexed { index, entry ->
-            val medal = when (index) {
-                0 -> "🥇"
-                1 -> "🥈"
-                2 -> "🥉"
-                else -> "🏅"
-            }
+            val medal = medalForIndex(index)
             val maxSeconds = leaderboard.entries.first().totalSeconds.coerceAtLeast(1L)
             val bar = progressBar(entry.totalSeconds.toDouble() / maxSeconds.toDouble(), 8)
             "$medal <@${entry.userId}> - ${durationFormatter.toHourMinute(entry.totalSeconds)} $bar"
@@ -276,6 +271,8 @@ class MogakcoSlashCommandHandler(
         val empty = size - filled
         return "▓".repeat(filled) + "░".repeat(empty)
     }
+
+    private fun medalForIndex(index: Int): String = rankMedalMap[index] ?: "🏅"
 
     private fun isSubcommand(
         event: SlashCommandInteractionEvent,
@@ -360,6 +357,11 @@ class MogakcoSlashCommandHandler(
     }
 
     companion object {
+        private val rankMedalMap = mapOf(
+            0 to "🥇",
+            1 to "🥈",
+            2 to "🥉",
+        )
         private const val COMMAND_NAME_KO = "모각코"
         private const val COMMAND_NAME_EN = "mogakco"
         private const val SUBCOMMAND_GROUP_CHANNEL_KO = "채널"

@@ -115,7 +115,9 @@ class AssignmentSlashCommandHandler(
                     "• ${statusEmoji(it.status)} [${it.id}] ${it.title} | ${KstTime.formatInstantToKst(it.remindAt)} | <@${it.createdBy}>"
                 }
                 val body = lines.joinToString(separator = "\n")
-                val clipped = if (body.length > 1800) "${body.take(1800)}\n... (생략됨)" else body
+                val clipped = body
+                    .takeIf { it.length <= 1800 }
+                    ?: "${body.take(1800)}\n... (생략됨)"
                 event.reply("과제 목록\n$clipped")
                     .setEphemeral(false)
                     .queue()

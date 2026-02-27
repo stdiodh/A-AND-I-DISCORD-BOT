@@ -7,18 +7,22 @@ enum class AssignmentStatus {
     ;
 
     companion object {
+        private val filterMapping = mapOf(
+            "PENDING" to PENDING,
+            "대기" to PENDING,
+            "DONE" to DONE,
+            "완료" to DONE,
+            "CANCELED" to CANCELED,
+            "CANCELLED" to CANCELED,
+            "취소" to CANCELED,
+        )
+
         fun fromFilter(raw: String): AssignmentStatus? {
             val normalized = raw.trim()
             if (normalized.isEmpty()) {
                 return null
             }
-
-            return when (normalized.uppercase()) {
-                "PENDING", "대기" -> PENDING
-                "DONE", "완료" -> DONE
-                "CANCELED", "CANCELLED", "취소" -> CANCELED
-                else -> null
-            }
+            return filterMapping[normalized.uppercase()]
         }
     }
 }

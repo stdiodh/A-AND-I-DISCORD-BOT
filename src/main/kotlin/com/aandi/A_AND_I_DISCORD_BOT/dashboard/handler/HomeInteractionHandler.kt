@@ -313,12 +313,7 @@ class HomeInteractionHandler(
 
         val maxSeconds = leaderboard.entries.maxOf { it.totalSeconds }.coerceAtLeast(1L)
         val rows = leaderboard.entries.mapIndexed { index, entry ->
-            val medal = when (index) {
-                0 -> "🥇"
-                1 -> "🥈"
-                2 -> "🥉"
-                else -> "🏅"
-            }
+            val medal = medalForIndex(index)
             val bar = progressBar(entry.totalSeconds.toDouble() / maxSeconds.toDouble(), 8)
             "$medal <@${entry.userId}> ${durationFormatter.toHourMinute(entry.totalSeconds)} $bar"
         }
@@ -496,7 +491,14 @@ class HomeInteractionHandler(
         return "▓".repeat(filled) + "░".repeat(empty)
     }
 
+    private fun medalForIndex(index: Int): String = rankMedalMap[index] ?: "🏅"
+
     companion object {
         private val SUPPORTED_PREFIXES = setOf("dash", "meeting", "assign", "mogakco", "home")
+        private val rankMedalMap = mapOf(
+            0 to "🥇",
+            1 to "🥈",
+            2 to "🥉",
+        )
     }
 }
