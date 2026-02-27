@@ -12,6 +12,7 @@ import com.aandi.A_AND_I_DISCORD_BOT.mogakco.repository.MogakcoChannelRepository
 import com.aandi.A_AND_I_DISCORD_BOT.mogakco.repository.VoiceSessionRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
@@ -23,6 +24,7 @@ class MogakcoService(
     private val voiceSessionRepository: VoiceSessionRepository,
     private val periodCalculator: PeriodCalculator,
     private val permissionChecker: PermissionChecker,
+    private val clock: Clock,
 ) {
 
     @Transactional
@@ -86,7 +88,14 @@ class MogakcoService(
         guildId: Long,
         period: PeriodType,
         top: Int,
-        now: Instant = Instant.now(),
+    ): LeaderboardView = getLeaderboard(guildId, period, top, Instant.now(clock))
+
+    @Transactional(readOnly = true)
+    fun getLeaderboard(
+        guildId: Long,
+        period: PeriodType,
+        top: Int,
+        now: Instant,
     ): LeaderboardView {
         val window = periodCalculator.currentWindow(period, now)
         val sessions = voiceSessionRepository.findSessionsInRange(guildId, window.startInclusive, window.measureEndExclusive)
@@ -113,7 +122,14 @@ class MogakcoService(
         guildId: Long,
         userId: Long,
         period: PeriodType,
-        now: Instant = Instant.now(),
+    ): MyStatsView = getMyStats(guildId, userId, period, Instant.now(clock))
+
+    @Transactional(readOnly = true)
+    fun getMyStats(
+        guildId: Long,
+        userId: Long,
+        period: PeriodType,
+        now: Instant,
     ): MyStatsView {
         val window = periodCalculator.currentWindow(period, now)
         val sessions = voiceSessionRepository.findSessionsInRange(guildId, window.startInclusive, window.measureEndExclusive)

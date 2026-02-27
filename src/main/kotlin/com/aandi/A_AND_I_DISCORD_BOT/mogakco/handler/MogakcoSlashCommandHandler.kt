@@ -1,12 +1,10 @@
 package com.aandi.A_AND_I_DISCORD_BOT.mogakco.handler
 
-import com.aandi.A_AND_I_DISCORD_BOT.common.error.DiscordErrorCode
-import com.aandi.A_AND_I_DISCORD_BOT.common.error.DiscordErrorFormatter
-import com.aandi.A_AND_I_DISCORD_BOT.common.error.DiscordErrorResponse
+import com.aandi.A_AND_I_DISCORD_BOT.common.auth.PermissionGate
+import com.aandi.A_AND_I_DISCORD_BOT.common.discord.DiscordReplyFactory
 import com.aandi.A_AND_I_DISCORD_BOT.common.format.DurationFormatter
 import com.aandi.A_AND_I_DISCORD_BOT.common.time.PeriodType
 import com.aandi.A_AND_I_DISCORD_BOT.mogakco.service.MogakcoService
-import net.dv8tion.jda.api.Permission
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent
 import net.dv8tion.jda.api.hooks.ListenerAdapter
 import org.springframework.stereotype.Component
@@ -16,6 +14,8 @@ import java.util.Locale
 class MogakcoSlashCommandHandler(
     private val mogakcoService: MogakcoService,
     private val durationFormatter: DurationFormatter,
+    private val permissionGate: PermissionGate,
+    private val discordReplyFactory: DiscordReplyFactory,
 ) : ListenerAdapter() {
 
     override fun onSlashCommandInteraction(event: SlashCommandInteractionEvent) {
@@ -74,7 +74,7 @@ class MogakcoSlashCommandHandler(
         val result = mogakcoService.addChannel(
             guildId = guild.idLong,
             requesterRoleIds = member.roles.map { it.idLong }.toSet(),
-            hasManageServerPermission = hasManageServerPermission(member),
+            hasManageServerPermission = permissionGate.canAdminAction(guild.idLong, member),
             channelId = channel.idLong,
         )
 
@@ -120,7 +120,7 @@ class MogakcoSlashCommandHandler(
         val result = mogakcoService.removeChannel(
             guildId = guild.idLong,
             requesterRoleIds = member.roles.map { it.idLong }.toSet(),
-            hasManageServerPermission = hasManageServerPermission(member),
+            hasManageServerPermission = permissionGate.canAdminAction(guild.idLong, member),
             channelId = channel.idLong,
         )
 
@@ -160,7 +160,7 @@ class MogakcoSlashCommandHandler(
         val result = mogakcoService.listChannels(
             guildId = guild.idLong,
             requesterRoleIds = member.roles.map { it.idLong }.toSet(),
-            hasManageServerPermission = hasManageServerPermission(member),
+            hasManageServerPermission = permissionGate.canAdminAction(guild.idLong, member),
         )
 
         when (result) {
@@ -205,7 +205,10 @@ class MogakcoSlashCommandHandler(
         }
 
         val rows = leaderboard.entries.mapIndexed { index, entry ->
-            "${index + 1}. <@${entry.userId}> - ${durationFormatter.toHourMinute(entry.totalSeconds)}"
+            val medal = medalForIndex(index)
+            val maxSeconds = leaderboard.entries.first().totalSeconds.coerceAtLeast(1L)
+            val bar = progressBar(entry.totalSeconds.toDouble() / maxSeconds.toDouble(), 8)
+            "$medal <@${entry.userId}> - ${durationFormatter.toHourMinute(entry.totalSeconds)} $bar"
         }
 
         event.reply("${periodLabel(period)} 모각코 랭킹\n${rows.joinToString(separator = "\\n")}")
@@ -233,10 +236,10 @@ class MogakcoSlashCommandHandler(
         )
 
         val message = buildString {
-            appendLine("${periodLabel(period)} 내 모각코 통계")
-            appendLine("- 누적시간: ${durationFormatter.toHourMinute(stats.totalSeconds)}")
-            appendLine("- 참여일수: ${stats.activeDays}/${stats.totalDays}일 (기준 ${stats.activeMinutesThreshold}분)")
-            append("- 참여율: ${formatPercent(stats.participationRate)}")
+            appendLine("${periodLabel(period)} 내 모각코 통계 📈")
+            appendLine("⏱ 누적시간: ${durationFormatter.toHourMinute(stats.totalSeconds)}")
+            appendLine("📅 참여일수: ${stats.activeDays}/${stats.totalDays}일 (기준 ${stats.activeMinutesThreshold}분)")
+            append("📊 참여율: ${formatPercent(stats.participationRate)} ${progressBar(stats.participationRate, 10)}")
         }
 
         event.reply(message)
@@ -262,6 +265,15 @@ class MogakcoSlashCommandHandler(
 
     private fun formatPercent(rate: Double): String = String.format(Locale.US, "%.1f%%", rate * 100.0)
 
+    private fun progressBar(rate: Double, size: Int): String {
+        val clamped = rate.coerceIn(0.0, 1.0)
+        val filled = (clamped * size).toInt()
+        val empty = size - filled
+        return "▓".repeat(filled) + "░".repeat(empty)
+    }
+
+    private fun medalForIndex(index: Int): String = rankMedalMap[index] ?: "🏅"
+
     private fun isSubcommand(
         event: SlashCommandInteractionEvent,
         ko: String,
@@ -274,77 +286,32 @@ class MogakcoSlashCommandHandler(
         en: String,
     ): Boolean = event.subcommandGroup == ko || event.subcommandGroup == en
 
-    private fun hasManageServerPermission(member: net.dv8tion.jda.api.entities.Member): Boolean {
-        if (member.hasPermission(Permission.ADMINISTRATOR)) {
-            return true
-        }
-        return member.hasPermission(Permission.MANAGE_SERVER)
-    }
-
     private fun replyUnsupported(event: SlashCommandInteractionEvent) {
         replyInvalidInputError(event, "지원하지 않는 하위 명령입니다.")
     }
 
     private fun replyGuildOnlyError(event: SlashCommandInteractionEvent) {
-        replyError(
-            event = event,
-            code = DiscordErrorCode.COMMON_INVALID_INPUT,
-            message = "길드에서만 사용할 수 있습니다.",
-            retryable = false,
-            ephemeral = true,
-        )
+        discordReplyFactory.invalidInput(event, "길드에서만 사용할 수 있습니다.")
     }
 
     private fun replyInvalidInputError(event: SlashCommandInteractionEvent, message: String) {
-        replyError(
-            event = event,
-            code = DiscordErrorCode.COMMON_INVALID_INPUT,
-            message = message,
-            retryable = false,
-            ephemeral = true,
-        )
+        discordReplyFactory.invalidInput(event, message)
     }
 
     private fun replyAccessDeniedError(event: SlashCommandInteractionEvent) {
-        replyError(
-            event = event,
-            code = DiscordErrorCode.ACCESS_DENIED,
-            message = "이 명령은 운영진만 사용할 수 있습니다.",
-            retryable = false,
-            ephemeral = true,
-        )
+        discordReplyFactory.accessDenied(event, "이 명령은 운영진만 사용할 수 있습니다.")
     }
 
     private fun replyResourceNotFoundError(event: SlashCommandInteractionEvent, message: String, ephemeral: Boolean) {
-        replyError(
-            event = event,
-            code = DiscordErrorCode.RESOURCE_NOT_FOUND,
-            message = message,
-            retryable = false,
-            ephemeral = ephemeral,
-        )
-    }
-
-    private fun replyError(
-        event: SlashCommandInteractionEvent,
-        code: DiscordErrorCode,
-        message: String,
-        retryable: Boolean,
-        ephemeral: Boolean,
-    ) {
-        val payload = DiscordErrorFormatter.format(
-            DiscordErrorResponse(
-                code = code,
-                message = message,
-                retryable = retryable,
-            ),
-        )
-        event.reply(payload)
-            .setEphemeral(ephemeral)
-            .queue()
+        discordReplyFactory.resourceNotFound(event, message, ephemeral)
     }
 
     companion object {
+        private val rankMedalMap = mapOf(
+            0 to "🥇",
+            1 to "🥈",
+            2 to "🥉",
+        )
         private const val COMMAND_NAME_KO = "모각코"
         private const val COMMAND_NAME_EN = "mogakco"
         private const val SUBCOMMAND_GROUP_CHANNEL_KO = "채널"
