@@ -55,8 +55,7 @@
   - 과제 등록/완료/삭제: `ADMIN_ROLE`
   - 과제 목록/상세: `ANY`
 - **설정 권한 정책(적용)**:
-  - `/설정 운영진역할`: `admin_role_id`가 설정된 경우 `ADMIN_ROLE`만 허용
-  - `/설정 운영진역할`: `admin_role_id`가 없는 경우 Manage Server/Administrator만 허용
+  - `/설정 운영진역할`, `/설정 운영진해제`: `ADMIN_ROLE` 또는 Manage Server/Administrator 허용 (복구용 break-glass)
   - `/설정 운영진조회`: `ANY` (권장: ephemeral 응답)
 
 ### 응답 정책
@@ -209,7 +208,8 @@
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| SLASH | `/설정 운영진역할` | 운영진 역할 ID를 길드 설정에 저장 | **Options:**<br>- `역할` (Role, required) | 설정 완료 메시지 (ephemeral) | ADMIN_ROLE 또는 (admin_role_id 미설정 시) Manage Server/Administrator |
+| SLASH | `/설정 운영진역할` | 운영진 역할 ID를 길드 설정에 저장 | **Options:**<br>- `역할` (Role, required) | 설정 완료 메시지 (ephemeral) | ADMIN_ROLE 또는 Manage Server/Administrator |
+| SLASH | `/설정 운영진해제` | 운영진 역할 설정을 해제(`admin_role_id = null`) | 없음 | 해제 완료 메시지 (ephemeral) | ADMIN_ROLE 또는 Manage Server/Administrator |
 | SLASH | `/설정 운영진조회` | 현재 운영진 역할 설정 조회 | 없음 | 현재 운영진 역할 정보 출력. 미설정 시 설정 가이드 안내(권장: ephemeral) | ANY |
 
 ---

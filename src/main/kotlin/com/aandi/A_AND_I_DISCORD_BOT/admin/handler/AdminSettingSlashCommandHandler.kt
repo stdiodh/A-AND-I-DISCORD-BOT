@@ -23,6 +23,10 @@ class AdminSettingSlashCommandHandler(
             handleSetAdminRole(event)
             return
         }
+        if (isSubcommand(event, SUBCOMMAND_CLEAR_ROLE_KO, SUBCOMMAND_CLEAR_ROLE_EN)) {
+            handleClearAdminRole(event)
+            return
+        }
         if (isSubcommand(event, SUBCOMMAND_VIEW_ROLE_KO, SUBCOMMAND_VIEW_ROLE_EN)) {
             handleGetAdminRole(event)
             return
@@ -37,7 +41,7 @@ class AdminSettingSlashCommandHandler(
             replyInvalidInputError(event, "길드에서만 사용할 수 있습니다.")
             return
         }
-        if (!adminPermissionChecker.canSetAdminRole(guild.idLong, member)) {
+        if (!adminPermissionChecker.canManageAdminRole(guild.idLong, member)) {
             replyAccessDeniedError(event)
             return
         }
@@ -50,6 +54,24 @@ class AdminSettingSlashCommandHandler(
 
         guildConfigService.setAdminRole(guild.idLong, role.idLong)
         event.reply("운영진 역할을 <@&${role.idLong}> 로 설정했습니다.")
+            .setEphemeral(true)
+            .queue()
+    }
+
+    private fun handleClearAdminRole(event: SlashCommandInteractionEvent) {
+        val guild = event.guild
+        val member = event.member
+        if (guild == null || member == null) {
+            replyInvalidInputError(event, "길드에서만 사용할 수 있습니다.")
+            return
+        }
+        if (!adminPermissionChecker.canManageAdminRole(guild.idLong, member)) {
+            replyAccessDeniedError(event)
+            return
+        }
+
+        guildConfigService.clearAdminRole(guild.idLong)
+        event.reply("운영진 역할 설정을 해제했습니다. 이후 `/설정 운영진역할 역할:@역할`로 다시 지정해 주세요.")
             .setEphemeral(true)
             .queue()
     }
@@ -100,7 +122,7 @@ class AdminSettingSlashCommandHandler(
         replyError(
             event = event,
             code = DiscordErrorCode.ACCESS_DENIED,
-            message = "운영진 역할 설정 권한이 없습니다.",
+            message = "운영진 역할 설정/해제 권한이 없습니다.",
         )
     }
 
@@ -126,6 +148,8 @@ class AdminSettingSlashCommandHandler(
         private const val COMMAND_NAME_EN = "settings"
         private const val SUBCOMMAND_SET_ROLE_KO = "운영진역할"
         private const val SUBCOMMAND_SET_ROLE_EN = "adminrole"
+        private const val SUBCOMMAND_CLEAR_ROLE_KO = "운영진해제"
+        private const val SUBCOMMAND_CLEAR_ROLE_EN = "adminclear"
         private const val SUBCOMMAND_VIEW_ROLE_KO = "운영진조회"
         private const val SUBCOMMAND_VIEW_ROLE_EN = "adminshow"
         private const val OPTION_ROLE_KO = "역할"

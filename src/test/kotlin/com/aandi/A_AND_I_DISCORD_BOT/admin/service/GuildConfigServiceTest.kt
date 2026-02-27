@@ -58,6 +58,19 @@ class GuildConfigServiceTest : FunSpec({
         result shouldBe 9999L
     }
 
+    test("clearAdminRole-운영진 역할 ID를 null로 저장한다") {
+        val guildId = 1234L
+        val config = GuildConfig(guildId = guildId, adminRoleId = 9999L)
+        every { guildConfigRepository.createDefaultIfAbsent(guildId) } returns 0
+        every { guildConfigRepository.findById(guildId) } returns Optional.of(config)
+        every { guildConfigRepository.save(config) } returns config
+
+        val result = service.clearAdminRole(guildId)
+
+        result.adminRoleId shouldBe null
+        verify(exactly = 1) { guildConfigRepository.save(config) }
+    }
+
     test("setDashboard-채널과 메시지 ID를 저장한다") {
         val guildId = 1234L
         val config = GuildConfig(guildId = guildId)
