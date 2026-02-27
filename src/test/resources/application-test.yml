@@ -9,6 +9,13 @@ spring:
   jpa:
     hibernate:
       ddl-auto: create-drop
+  task:
+    scheduling:
+      enabled: false
 
 discord:
   enabled: false
+
+voice:
+  summary:
+    enabled: false
