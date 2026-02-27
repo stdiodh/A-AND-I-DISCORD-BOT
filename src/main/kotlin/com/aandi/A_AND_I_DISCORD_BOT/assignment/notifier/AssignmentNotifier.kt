@@ -10,6 +10,7 @@ import net.dv8tion.jda.api.exceptions.ErrorResponseException
 import net.dv8tion.jda.api.requests.ErrorResponse
 import org.slf4j.LoggerFactory
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
+import org.springframework.context.annotation.Lazy
 import org.springframework.stereotype.Component
 import java.awt.Color
 import java.time.Clock
@@ -20,7 +21,7 @@ import java.util.concurrent.TimeoutException
 @Component
 @ConditionalOnProperty(name = ["discord.enabled"], havingValue = "true", matchIfMissing = true)
 class AssignmentNotifier(
-    private val jda: JDA,
+    @Lazy private val jda: JDA,
     private val clock: Clock,
 ) {
 

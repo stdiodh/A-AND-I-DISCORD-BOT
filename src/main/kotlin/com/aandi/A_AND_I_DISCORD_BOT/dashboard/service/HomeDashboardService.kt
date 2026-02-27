@@ -14,6 +14,7 @@ import net.dv8tion.jda.api.Permission
 import net.dv8tion.jda.api.components.actionrow.ActionRow
 import net.dv8tion.jda.api.components.buttons.Button
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
+import org.springframework.context.annotation.Lazy
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.awt.Color
@@ -27,7 +28,7 @@ class HomeDashboardService(
     private val mogakcoService: MogakcoService,
     private val durationFormatter: DurationFormatter,
     private val renderer: DashboardRenderer,
-    private val jda: JDA,
+    @Lazy private val jda: JDA,
 ) {
 
     @Transactional
