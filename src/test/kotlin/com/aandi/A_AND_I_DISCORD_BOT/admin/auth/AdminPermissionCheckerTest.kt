@@ -57,6 +57,17 @@ class AdminPermissionCheckerTest : FunSpec({
         checker.isAdmin(guildId, adminRoleMember) shouldBe true
         checker.isAdmin(guildId, manageServerOnlyMember) shouldBe false
     }
+
+    test("canManageAdminRole-운영진 역할이 잘못 설정된 경우에도 서버 관리자 권한으로 복구 가능하다") {
+        every { guildConfigService.getAdminRole(guildId) } returns 555L
+        val manageServerOnlyMember = member(roleIds = emptyList(), isAdmin = false, canManageServer = true)
+        val administratorMember = member(roleIds = emptyList(), isAdmin = true, canManageServer = false)
+        val noPrivilegeMember = member(roleIds = emptyList(), isAdmin = false, canManageServer = false)
+
+        checker.canManageAdminRole(guildId, manageServerOnlyMember) shouldBe true
+        checker.canManageAdminRole(guildId, administratorMember) shouldBe true
+        checker.canManageAdminRole(guildId, noPrivilegeMember) shouldBe false
+    }
 }) {
     companion object {
         private fun member(

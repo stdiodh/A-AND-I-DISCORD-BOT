@@ -143,12 +143,17 @@
 ## 설정
 - `/설정 운영진역할 역할:@운영진`
   - 설명: 운영진 역할을 guild_config.admin_role_id로 설정
-  - 권한: admin_role_id 설정 시 운영진만, 미설정 시 Manage Server/Administrator
+  - 권한: 운영진 또는 Manage Server/Administrator
 
 - `/설정 운영진조회`
   - 설명: 현재 운영진 역할 조회
   - 응답: 미설정 상태면 설정 방법(`/설정 운영진역할 역할:@운영진`) 안내
   - 권한: 전체 (권장: ephemeral)
+
+- `/설정 운영진해제`
+  - 설명: 운영진 역할 설정을 해제(`admin_role_id = null`)
+  - 사용 예: 운영진 역할을 잘못 지정했거나 삭제된 역할로 잠긴 경우 복구
+  - 권한: 운영진 또는 Manage Server/Administrator
 
 ## 알림시각 입력 포맷
 - 예시: `"2026-03-01 21:30"`

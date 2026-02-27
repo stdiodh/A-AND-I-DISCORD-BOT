@@ -23,6 +23,13 @@ class AdminPermissionChecker(
         return member.roles.any { it.idLong == adminRoleId }
     }
 
+    fun canManageAdminRole(guildId: Long, member: Member): Boolean {
+        if (hasManageServerPermission(member)) {
+            return true
+        }
+        return canSetAdminRole(guildId, member)
+    }
+
     private fun hasManageServerPermission(member: Member): Boolean {
         if (member.hasPermission(Permission.ADMINISTRATOR)) {
             return true

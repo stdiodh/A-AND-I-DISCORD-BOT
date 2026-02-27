@@ -25,6 +25,13 @@ class GuildConfigService(
     }
 
     @Transactional
+    fun clearAdminRole(guildId: Long): GuildConfig {
+        val config = getOrCreate(guildId)
+        config.adminRoleId = null
+        return guildConfigRepository.save(config)
+    }
+
+    @Transactional
     fun getAdminRole(guildId: Long): Long? {
         val config = getOrCreate(guildId)
         return config.adminRoleId
