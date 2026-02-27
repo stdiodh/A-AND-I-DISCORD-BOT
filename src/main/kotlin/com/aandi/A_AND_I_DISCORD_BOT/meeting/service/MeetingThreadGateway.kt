@@ -12,6 +12,7 @@ import net.dv8tion.jda.api.entities.Message
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel
 import net.dv8tion.jda.api.entities.channel.concrete.ThreadChannel
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
+import org.springframework.context.annotation.Lazy
 import org.springframework.stereotype.Component
 import java.awt.Color
 import java.time.Instant
@@ -19,7 +20,7 @@ import java.time.Instant
 @Component
 @ConditionalOnProperty(name = ["discord.enabled"], havingValue = "true", matchIfMissing = true)
 class MeetingThreadGateway(
-    private val jda: JDA,
+    @Lazy private val jda: JDA,
     private val agendaService: AgendaService,
 ) {
 
