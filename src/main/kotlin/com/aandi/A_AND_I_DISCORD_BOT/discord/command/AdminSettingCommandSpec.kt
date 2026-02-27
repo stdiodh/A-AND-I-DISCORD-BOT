@@ -18,7 +18,7 @@ class AdminSettingCommandSpec : DiscordCommandSpec {
                 .addSubcommands(
                     SubcommandData("운영진역할", "운영진 역할 설정")
                         .addOptions(
-                            OptionData(OptionType.ROLE, "역할", "운영진으로 사용할 역할", true),
+                            OptionData(OptionType.ROLE, "대상역할", "운영진으로 사용할 역할", true),
                         ),
                     SubcommandData("운영진해제", "운영진 역할 해제"),
                     SubcommandData("운영진조회", "현재 운영진 역할 조회"),

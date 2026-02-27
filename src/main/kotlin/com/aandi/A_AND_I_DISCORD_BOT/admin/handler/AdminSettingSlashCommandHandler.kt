@@ -46,9 +46,11 @@ class AdminSettingSlashCommandHandler(
             return
         }
 
-        val role = event.getOption(OPTION_ROLE_KO)?.asRole ?: event.getOption(OPTION_ROLE_EN)?.asRole
+        val role = event.getOption(OPTION_ROLE_TARGET_KO)?.asRole
+            ?: event.getOption(OPTION_ROLE_LEGACY_KO)?.asRole
+            ?: event.getOption(OPTION_ROLE_EN)?.asRole
         if (role == null) {
-            replyInvalidInputError(event, "역할 옵션이 필요합니다.")
+            replyInvalidInputError(event, "`대상역할` 옵션이 필요합니다.")
             return
         }
 
@@ -71,7 +73,7 @@ class AdminSettingSlashCommandHandler(
         }
 
         guildConfigService.clearAdminRole(guild.idLong)
-        event.reply("운영진 역할 설정을 해제했습니다. 이후 `/설정 운영진역할 역할:@역할`로 다시 지정해 주세요.")
+        event.reply("운영진 역할 설정을 해제했습니다. 필요하면 `/설정 운영진역할`에서 `대상역할`을 선택해 다시 지정해 주세요.")
             .setEphemeral(true)
             .queue()
     }
@@ -85,7 +87,7 @@ class AdminSettingSlashCommandHandler(
 
         val adminRoleId = guildConfigService.getAdminRole(guild.idLong)
         if (adminRoleId == null) {
-            event.reply("운영진 역할이 아직 설정되지 않았습니다. `/설정 운영진역할 역할:@운영진` 으로 먼저 설정해 주세요.")
+            event.reply("운영진 역할이 아직 설정되지 않았습니다. `/설정 운영진역할`에서 `대상역할`을 선택해 먼저 설정해 주세요.")
                 .setEphemeral(true)
                 .queue()
             return
@@ -152,7 +154,8 @@ class AdminSettingSlashCommandHandler(
         private const val SUBCOMMAND_CLEAR_ROLE_EN = "adminclear"
         private const val SUBCOMMAND_VIEW_ROLE_KO = "운영진조회"
         private const val SUBCOMMAND_VIEW_ROLE_EN = "adminshow"
-        private const val OPTION_ROLE_KO = "역할"
+        private const val OPTION_ROLE_TARGET_KO = "대상역할"
+        private const val OPTION_ROLE_LEGACY_KO = "역할"
         private const val OPTION_ROLE_EN = "role"
     }
 }
