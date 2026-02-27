@@ -176,10 +176,15 @@
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
 | SLASH | `/과제 등록` | 과제 등록 | **Options:**<br>- `제목` (String, required)<br>- `링크` (String, required, http/https)<br>- `알림시각` (String, required, KST)<br>- `마감시각` (String, required, KST)<br>- `채널` (TextChannel, optional)<br>- `알림역할` (Role, optional)<br>- `임박알림` (String, optional, 예: 24,3,1)<br>- `종료메시지` (String, optional) | 등록 결과(과제ID/알림·마감시각/역할) 출력 | ADMIN_ROLE |
-| SLASH | `/과제 목록` | 과제 목록 조회 | **Options:**<br>- `상태` (optional: `대기/완료/취소/종료` 또는 `PENDING/DONE/CANCELED/CLOSED`) | 과제 목록 출력 | ANY |
+| SLASH | `/과제 목록` | 과제 목록 조회 | **Options:**<br>- `상태` (optional: `대기/완료/종료` 또는 `PENDING/DONE/CLOSED`) | 과제 목록 출력 | ANY |
 | SLASH | `/과제 상세` | 과제 상세 조회 | **Options:**<br>- `과제아이디` (Long, required) | 과제 상세 출력(ephemeral 권장) | ANY |
 | SLASH | `/과제 완료` | 과제 완료 처리 | **Options:**<br>- `과제아이디` (Long, required) | 완료 처리 결과 출력 | ADMIN_ROLE |
 | SLASH | `/과제 삭제` | 과제 삭제(또는 취소) 처리 | **Options:**<br>- `과제아이디` (Long, required) | 삭제 처리 결과 출력 | ADMIN_ROLE |
+
+### 과제 목록 노출 정책
+- `/과제 삭제`는 물리 삭제가 아닌 `CANCELED` 상태 전환이다.
+- `CANCELED` 과제는 `/과제 목록`에서 기본적으로 노출하지 않는다.
+- 상태 필터로도 `취소/CANCELED` 조회는 허용하지 않는다.
 
 ### 과제 빠른 등록 모달(대시보드 버튼)
 - `제목`: 예 `3주차 API 과제 제출`

@@ -31,10 +31,9 @@ class AssignmentCommandSpec : DiscordCommandSpec {
                         ),
                     SubcommandData("목록", "과제 목록 조회")
                         .addOptions(
-                            OptionData(OptionType.STRING, "상태", "대기/완료/취소", false)
+                            OptionData(OptionType.STRING, "상태", "대기/완료/종료", false)
                                 .addChoice("대기", "대기")
                                 .addChoice("완료", "완료")
-                                .addChoice("취소", "취소")
                                 .addChoice("종료", "종료"),
                         ),
                     SubcommandData("상세", "과제 상세 조회")

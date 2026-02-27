@@ -151,7 +151,11 @@ class AssignmentSlashCommandHandler(
         val rawStatus = event.getOption(OPTION_STATUS_KO)?.asString
         when (val result = assignmentTaskService.list(guild.idLong, rawStatus)) {
             AssignmentTaskService.ListResult.InvalidStatus -> {
-                replyInvalidInputError(event, "상태는 대기/완료/취소/종료 중 하나로 입력해 주세요.", true)
+                replyInvalidInputError(event, "상태는 대기/완료/종료 중 하나로 입력해 주세요.", true)
+            }
+
+            AssignmentTaskService.ListResult.HiddenDeleted -> {
+                replyInvalidInputError(event, "삭제(취소)된 과제는 목록에서 조회할 수 없습니다.", true)
             }
 
             is AssignmentTaskService.ListResult.Success -> {

@@ -2,6 +2,7 @@ package com.aandi.A_AND_I_DISCORD_BOT.assignment.service
 
 import com.aandi.A_AND_I_DISCORD_BOT.admin.service.GuildConfigService
 import com.aandi.A_AND_I_DISCORD_BOT.agenda.entity.GuildConfig
+import com.aandi.A_AND_I_DISCORD_BOT.assignment.entity.AssignmentStatus
 import com.aandi.A_AND_I_DISCORD_BOT.assignment.entity.AssignmentTaskEntity
 import com.aandi.A_AND_I_DISCORD_BOT.assignment.repository.AssignmentTaskRepository
 import io.kotest.core.spec.style.FunSpec
@@ -149,5 +150,31 @@ class AssignmentTaskServiceTest : FunSpec({
         }
         verify(exactly = 1) { guildConfigService.getOrCreate(1L) }
         verify(exactly = 1) { assignmentTaskRepository.save(any()) }
+    }
+
+    test("list-기본 조회는 취소 상태를 제외한 상태만 조회한다") {
+        every {
+            assignmentTaskRepository.findByGuildIdAndStatusInOrderByRemindAtDescCreatedAtDesc(
+                guildId = 1L,
+                statuses = any(),
+            )
+        } returns emptyList()
+
+        val result = service.list(guildId = 1L, rawStatus = null)
+
+        result shouldBe AssignmentTaskService.ListResult.Success(emptyList())
+        verify(exactly = 1) {
+            assignmentTaskRepository.findByGuildIdAndStatusInOrderByRemindAtDescCreatedAtDesc(
+                guildId = 1L,
+                statuses = setOf(AssignmentStatus.PENDING, AssignmentStatus.DONE, AssignmentStatus.CLOSED),
+            )
+        }
+    }
+
+    test("list-취소 상태 필터는 숨김 처리된다") {
+        val result = service.list(guildId = 1L, rawStatus = "취소")
+
+        result shouldBe AssignmentTaskService.ListResult.HiddenDeleted
+        verify(exactly = 0) { assignmentTaskRepository.findByGuildIdAndStatusOrderByRemindAtDescCreatedAtDesc(any(), any()) }
     }
 })
