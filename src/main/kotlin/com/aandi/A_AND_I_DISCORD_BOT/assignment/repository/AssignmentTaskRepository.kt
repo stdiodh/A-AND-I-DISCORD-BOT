@@ -19,6 +19,11 @@ interface AssignmentTaskRepository : JpaRepository<AssignmentTaskEntity, Long> {
         status: AssignmentStatus,
     ): List<AssignmentTaskEntity>
 
+    fun findByGuildIdAndStatusInOrderByRemindAtDescCreatedAtDesc(
+        guildId: Long,
+        statuses: Collection<AssignmentStatus>,
+    ): List<AssignmentTaskEntity>
+
     @Query(
         value = """
             SELECT *

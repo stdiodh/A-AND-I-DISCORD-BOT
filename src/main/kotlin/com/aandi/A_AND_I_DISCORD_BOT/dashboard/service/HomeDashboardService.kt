@@ -116,6 +116,7 @@ class HomeDashboardService(
         return when (val result = assignmentTaskService.list(guildId, "대기")) {
             is AssignmentTaskService.ListResult.Success -> result.tasks.size
             AssignmentTaskService.ListResult.InvalidStatus -> null
+            AssignmentTaskService.ListResult.HiddenDeleted -> null
         }
     }
 

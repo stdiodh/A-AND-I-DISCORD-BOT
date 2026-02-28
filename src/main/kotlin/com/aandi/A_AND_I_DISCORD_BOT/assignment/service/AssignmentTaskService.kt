@@ -79,14 +79,21 @@ class AssignmentTaskService(
         if (statusFilter is StatusFilter.Invalid) {
             return ListResult.InvalidStatus
         }
+        if (statusFilter is StatusFilter.HiddenDeleted) {
+            return ListResult.HiddenDeleted
+        }
 
         val tasks = when (statusFilter) {
-            StatusFilter.All -> assignmentTaskRepository.findByGuildIdOrderByRemindAtDescCreatedAtDesc(guildId)
+            StatusFilter.AllVisible -> assignmentTaskRepository.findByGuildIdAndStatusInOrderByRemindAtDescCreatedAtDesc(
+                guildId = guildId,
+                statuses = visibleListStatuses,
+            )
             is StatusFilter.Selected -> assignmentTaskRepository.findByGuildIdAndStatusOrderByRemindAtDescCreatedAtDesc(
                 guildId = guildId,
                 status = statusFilter.status,
             )
             StatusFilter.Invalid -> emptyList()
+            StatusFilter.HiddenDeleted -> emptyList()
         }
         return ListResult.Success(tasks.map { it.toView() })
     }
@@ -273,9 +280,12 @@ class AssignmentTaskService(
 
     private fun resolveStatusFilter(rawStatus: String?): StatusFilter {
         if (rawStatus.isNullOrBlank()) {
-            return StatusFilter.All
+            return StatusFilter.AllVisible
         }
         val mapped = AssignmentStatus.fromFilter(rawStatus) ?: return StatusFilter.Invalid
+        if (mapped == AssignmentStatus.CANCELED) {
+            return StatusFilter.HiddenDeleted
+        }
         return StatusFilter.Selected(mapped)
     }
 
@@ -381,6 +391,7 @@ class AssignmentTaskService(
     sealed interface ListResult {
         data class Success(val tasks: List<AssignmentTaskView>) : ListResult
         data object InvalidStatus : ListResult
+        data object HiddenDeleted : ListResult
     }
 
     sealed interface DetailResult {
@@ -394,9 +405,10 @@ class AssignmentTaskService(
     }
 
     private sealed interface StatusFilter {
-        data object All : StatusFilter
+        data object AllVisible : StatusFilter
         data class Selected(val status: AssignmentStatus) : StatusFilter
         data object Invalid : StatusFilter
+        data object HiddenDeleted : StatusFilter
     }
 
     private sealed interface ClosingMessageValidation {
@@ -405,6 +417,11 @@ class AssignmentTaskService(
     }
 
     companion object {
+        private val visibleListStatuses = setOf(
+            AssignmentStatus.PENDING,
+            AssignmentStatus.DONE,
+            AssignmentStatus.CLOSED,
+        )
         private val HOUR_REGEX = Regex("""\d+""")
         private val DEFAULT_PRE_REMINDER_HOURS = setOf(24, 3, 1)
         private const val MAX_PRE_REMINDER_HOURS = 168
