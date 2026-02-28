@@ -52,12 +52,7 @@ class HomeSlashCommandHandler(
 
         when (val result = homeDashboardService.create(guild.idLong, guild.name, channel.idLong)) {
             is HomeDashboardService.Result.Success -> {
-                val pinNote = when (result.pinResult) {
-                    HomeDashboardService.PinResult.PINNED -> "핀 고정도 완료했습니다."
-                    HomeDashboardService.PinResult.NO_PERMISSION -> "메시지는 생성됐지만 핀 권한이 없어 고정하지 못했습니다."
-                    HomeDashboardService.PinResult.FAILED -> "메시지는 생성됐지만 핀 고정에 실패했습니다."
-                    HomeDashboardService.PinResult.SKIPPED -> "메시지를 생성했습니다."
-                }
+                val pinNote = buildPinNote(result.pinResult)
                 event.reply("홈 메시지를 생성했습니다. <#${result.channelId}> / 메시지 ID: `${result.messageId}`\n$pinNote")
                     .setEphemeral(true)
                     .queue()
@@ -89,9 +84,10 @@ class HomeSlashCommandHandler(
             return
         }
 
-        when (homeDashboardService.refresh(guild.idLong, guild.name)) {
+        when (val result = homeDashboardService.refresh(guild.idLong, guild.name)) {
             is HomeDashboardService.Result.Success -> {
-                event.reply("홈 메시지를 갱신했습니다.")
+                val pinNote = buildPinNote(result.pinResult)
+                event.reply("홈 메시지를 갱신했습니다.\n$pinNote")
                     .setEphemeral(true)
                     .queue()
             }
@@ -112,6 +108,15 @@ class HomeSlashCommandHandler(
 
     private fun isSubcommand(event: SlashCommandInteractionEvent, ko: String, en: String): Boolean {
         return event.subcommandName == ko || event.subcommandName == en
+    }
+
+    private fun buildPinNote(pinResult: HomeDashboardService.PinResult): String {
+        return when (pinResult) {
+            HomeDashboardService.PinResult.PINNED -> "핀 고정도 완료했습니다."
+            HomeDashboardService.PinResult.NO_PERMISSION -> "봇에 `메시지 관리(Manage Messages)` 권한이 없어 핀 고정을 하지 못했습니다."
+            HomeDashboardService.PinResult.FAILED -> "핀 고정에 실패했습니다. 권한과 채널 상태를 확인해 주세요."
+            HomeDashboardService.PinResult.SKIPPED -> "기존 핀 상태를 유지했습니다."
+        }
     }
 
     companion object {

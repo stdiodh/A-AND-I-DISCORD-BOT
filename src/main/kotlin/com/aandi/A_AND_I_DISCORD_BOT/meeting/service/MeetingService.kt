@@ -69,6 +69,10 @@ class MeetingService(
             val archived: Boolean,
         ) : EndResult
 
+        data class ClosedMissingThread(
+            val sessionId: Long,
+            val threadId: Long,
+        ) : EndResult
         data object SessionNotFound : EndResult
         data object AlreadyEnded : EndResult
         data class ThreadNotFound(val threadId: Long) : EndResult
