@@ -15,6 +15,7 @@ import org.springframework.stereotype.Component
 import java.awt.Color
 import java.time.Clock
 import java.time.Instant
+import java.time.temporal.ChronoUnit
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 
@@ -57,9 +58,39 @@ class AssignmentNotifier(
         val prefix = if (roleMention.isBlank()) "" else "$roleMention "
         return when (notificationType) {
             NotificationType.InitialReminder -> "${prefix}과제 알림이 도착했습니다."
-            is NotificationType.PreDueReminder -> "${prefix}과제가 ${notificationType.hoursBeforeDue}시간 후 마감됩니다."
+            is NotificationType.PreDueReminder -> buildPreDueMessage(prefix, task)
             NotificationType.CloseDue -> buildClosingMessage(prefix, task)
         }
+    }
+
+    private fun buildPreDueMessage(prefix: String, task: AssignmentTaskView): String {
+        val minutesLeft = ChronoUnit.MINUTES.between(Instant.now(clock), task.dueAt)
+        if (minutesLeft <= 0) {
+            return "${prefix}과제 마감이 임박했습니다. (마감시각: ${KstTime.formatInstantToKst(task.dueAt)})"
+        }
+        val remaining = formatRemaining(minutesLeft)
+        return "${prefix}과제가 ${remaining} 후 마감됩니다."
+    }
+
+    private fun formatRemaining(totalMinutes: Long): String {
+        if (totalMinutes < 60) {
+            return "약 ${totalMinutes}분"
+        }
+        if (totalMinutes < 24 * 60) {
+            val hours = totalMinutes / 60
+            val minutes = totalMinutes % 60
+            if (minutes == 0L) {
+                return "약 ${hours}시간"
+            }
+            return "약 ${hours}시간 ${minutes}분"
+        }
+
+        val days = totalMinutes / (24 * 60)
+        val remainHours = (totalMinutes % (24 * 60)) / 60
+        if (remainHours == 0L) {
+            return "약 ${days}일"
+        }
+        return "약 ${days}일 ${remainHours}시간"
     }
 
     private fun buildClosingMessage(prefix: String, task: AssignmentTaskView): String {
@@ -74,7 +105,7 @@ class AssignmentNotifier(
         .setTitle(resolveTitle(notificationType))
         .setColor(resolveColor(notificationType))
         .addField("제목", task.title, false)
-        .addField("검증 링크", task.verifyUrl, false)
+        .addField("과제 링크", task.verifyUrl, false)
         .addField("알림시각(KST)", KstTime.formatInstantToKst(task.remindAt), true)
         .addField("마감시각(KST)", KstTime.formatInstantToKst(task.dueAt), true)
         .addField("등록자", "<@${task.createdBy}>", true)

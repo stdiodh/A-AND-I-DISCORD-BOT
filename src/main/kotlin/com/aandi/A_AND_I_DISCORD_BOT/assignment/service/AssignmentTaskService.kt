@@ -176,6 +176,10 @@ class AssignmentTaskService(
         if (!task.dueAt.isAfter(nowUtc)) {
             return PendingAction.None
         }
+        val remainingMinutes = ChronoUnit.MINUTES.between(nowUtc, task.dueAt)
+        if (remainingMinutes <= 0) {
+            return PendingAction.None
+        }
 
         val unsentHour = task.preRemindHours
             .sortedDescending()
@@ -184,7 +188,10 @@ class AssignmentTaskService(
                     return@firstOrNull false
                 }
                 val triggerAt = task.dueAt.minus(hour.toLong(), ChronoUnit.HOURS)
-                !triggerAt.isAfter(nowUtc)
+                if (triggerAt.isAfter(nowUtc)) {
+                    return@firstOrNull false
+                }
+                remainingMinutes >= hour.toLong() * 60L
             }
             ?: return PendingAction.None
 

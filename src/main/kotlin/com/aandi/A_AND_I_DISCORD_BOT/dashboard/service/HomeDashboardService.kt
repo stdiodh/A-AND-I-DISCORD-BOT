@@ -58,7 +58,12 @@ class HomeDashboardService(
             .setComponents(bundle.components)
             .complete()
 
-        return Result.Success(channelId, messageId, PinResult.SKIPPED)
+        val pinResult = if (message.isPinned) {
+            PinResult.SKIPPED
+        } else {
+            pinIfPossible(channelId, messageId)
+        }
+        return Result.Success(channelId, messageId, pinResult)
     }
 
     private fun loadBundle(guildId: Long, guildName: String?): DashboardBundle {

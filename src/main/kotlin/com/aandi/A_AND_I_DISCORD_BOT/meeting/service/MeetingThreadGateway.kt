@@ -29,7 +29,17 @@ class MeetingThreadGateway(
     }
 
     fun findThreadChannel(threadId: Long): ThreadChannel? {
-        return jda.getThreadChannelById(threadId)
+        jda.getThreadChannelById(threadId)?.let { return it }
+
+        jda.guilds.forEach { guild ->
+            val activeThread = runCatching { guild.retrieveActiveThreads().complete() }
+                .getOrNull()
+                ?.firstOrNull { it.idLong == threadId }
+            if (activeThread != null) {
+                return activeThread
+            }
+        }
+        return null
     }
 
     fun createStartMessage(channel: TextChannel, requestedBy: Long, nowUtc: Instant): Message {

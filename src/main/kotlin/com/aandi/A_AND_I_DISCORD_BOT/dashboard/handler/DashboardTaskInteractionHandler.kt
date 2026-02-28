@@ -9,6 +9,7 @@ import com.aandi.A_AND_I_DISCORD_BOT.discord.interaction.InteractionPrefixHandle
 import net.dv8tion.jda.api.components.label.Label
 import net.dv8tion.jda.api.components.textinput.TextInput
 import net.dv8tion.jda.api.components.textinput.TextInputStyle
+import net.dv8tion.jda.api.entities.Guild
 import net.dv8tion.jda.api.events.interaction.ModalInteractionEvent
 import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent
 import net.dv8tion.jda.api.modals.Modal
@@ -89,16 +90,16 @@ class DashboardTaskInteractionHandler(
             .build()
         val channelId = TextInput.create("채널", TextInputStyle.SHORT)
             .setRequired(false)
-            .setPlaceholder("예) #과제공지 또는 123456789012345678")
-            .setMaxLength(40)
+            .setPlaceholder("예) <#과제공지> <@&백엔드팀> 또는 채널 ID")
+            .setMaxLength(120)
             .build()
         val modal = Modal.create(DashboardActionIds.ASSIGNMENT_MODAL, "과제 빠른 등록")
             .addComponents(
                 Label.of("과제 제목", title),
-                Label.of("검증 링크(http/https)", link),
+                Label.of("과제 링크(http/https)", link),
                 Label.of("알림시각(KST)", remindAt),
                 Label.of("마감시각(KST)", dueAt),
-                Label.of("채널(선택)", channelId),
+                Label.of("채널/알림역할(선택)", channelId),
             )
             .build()
         event.replyModal(modal).queue()
@@ -160,7 +161,20 @@ class DashboardTaskInteractionHandler(
         }
 
         val channelRaw = event.getValue("채널")?.asString?.trim().orEmpty()
-        val channelId = parseChannelId(channelRaw) ?: event.channel.idLong
+        val notifyRoleId = parseRoleId(channelRaw, guild)
+        if (notifyRoleId == null && ROLE_HINT_REGEX.containsMatchIn(channelRaw)) {
+            event.reply("알림역할을 찾지 못했습니다. `@역할명` 또는 `<@&역할ID>` 형식으로 입력해 주세요.")
+                .setEphemeral(true)
+                .queue()
+            return
+        }
+        if (notifyRoleId != null && guild.getRoleById(notifyRoleId) == null) {
+            event.reply("알림역할을 찾지 못했습니다. `@역할` 멘션 형식으로 입력해 주세요.")
+                .setEphemeral(true)
+                .queue()
+            return
+        }
+        val channelId = parseChannelId(channelRaw, guild) ?: event.channel.idLong
         val result = assignmentTaskService.create(
             guildId = guild.idLong,
             channelId = channelId,
@@ -170,15 +184,16 @@ class DashboardTaskInteractionHandler(
             dueAtUtc = dueAtUtc,
             createdBy = member.idLong,
             nowUtc = Instant.now(clock),
-            notifyRoleId = null,
+            notifyRoleId = notifyRoleId,
             preReminderHoursRaw = null,
             closingMessageRaw = null,
         )
         when (result) {
             is AssignmentTaskService.CreateResult.Success -> {
                 val task = result.task
+                val roleDisplay = task.notifyRoleId?.let { "<@&$it>" } ?: "없음"
                 event.reply(
-                    "과제를 등록했습니다. ID: ${task.id}\n알림시각(KST): ${KstTime.formatInstantToKst(task.remindAt)}\n마감시각(KST): ${KstTime.formatInstantToKst(task.dueAt)}\n※ 빠른 등록은 알림역할/종료메시지 기본값이 적용됩니다.",
+                    "과제를 등록했습니다. ID: ${task.id}\n알림시각(KST): ${KstTime.formatInstantToKst(task.remindAt)}\n마감시각(KST): ${KstTime.formatInstantToKst(task.dueAt)}\n알림역할: $roleDisplay\n※ 빠른 등록은 임박알림/종료메시지 기본값이 적용됩니다.",
                 )
                     .setEphemeral(true)
                     .queue()
@@ -214,17 +229,57 @@ class DashboardTaskInteractionHandler(
         }
     }
 
-    private fun parseChannelId(raw: String): Long? {
+    private fun parseChannelId(raw: String, guild: Guild): Long? {
         if (raw.isBlank()) {
             return null
         }
-        if (raw.startsWith("<#") && raw.endsWith(">")) {
-            return raw.removePrefix("<#").removeSuffix(">").toLongOrNull()
+        val fromMention = CHANNEL_MENTION_REGEX.find(raw)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.toLongOrNull()
+        if (fromMention != null) {
+            return fromMention
         }
-        return raw.toLongOrNull()
+        val numeric = raw.trim().toLongOrNull()
+        if (numeric != null) {
+            return numeric
+        }
+        val channelName = CHANNEL_NAME_REGEX.find(raw)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?: return null
+        return guild.textChannels.firstOrNull { it.name.equals(channelName, ignoreCase = true) }?.idLong
+    }
+
+    private fun parseRoleId(raw: String, guild: Guild): Long? {
+        if (raw.isBlank()) {
+            return null
+        }
+        val fromMention = ROLE_MENTION_REGEX.find(raw)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.toLongOrNull()
+        if (fromMention != null) {
+            return fromMention
+        }
+
+        val roleName = ROLE_NAME_REGEX.find(raw)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?: return null
+        return guild.roles.firstOrNull { it.name.equals(roleName, ignoreCase = true) }?.idLong
     }
 
     companion object {
         private val supportedPrefixes = setOf("dash", "assign", "home")
+        private val CHANNEL_MENTION_REGEX = Regex("""<#(\d+)>""")
+        private val ROLE_MENTION_REGEX = Regex("""<@&(\d+)>""")
+        private val CHANNEL_NAME_REGEX = Regex("""#([^\s>]+)""")
+        private val ROLE_NAME_REGEX = Regex("""@([^\s>]+)""")
+        private val ROLE_HINT_REGEX = Regex("""<@&\d+>|@[^\s]+""")
     }
 }

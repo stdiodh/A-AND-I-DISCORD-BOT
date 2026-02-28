@@ -37,7 +37,7 @@ class MeetingEndUseCase(
         }
 
         val thread = meetingThreadGateway.findThreadChannel(session.threadId)
-            ?: return MeetingService.EndResult.ThreadNotFound(session.threadId)
+            ?: return closeMissingThreadSession(session, requestedBy)
         val messages = meetingThreadGateway.collectMessages(thread, MAX_SUMMARY_MESSAGES)
         val summaryInput = messages.map {
             MeetingSummaryExtractor.MeetingMessage(
@@ -71,6 +71,23 @@ class MeetingEndUseCase(
             decisions = summary.decisions,
             actionItems = summary.actionItems,
             archived = archived,
+        )
+    }
+
+    private fun closeMissingThreadSession(
+        session: MeetingSessionEntity,
+        requestedBy: Long,
+    ): MeetingService.EndResult {
+        val nowUtc = Instant.now(clock)
+        session.status = MeetingSessionStatus.ENDED
+        session.endedBy = requestedBy
+        session.endedAt = nowUtc
+        session.updatedAt = nowUtc
+        meetingSessionRepository.save(session)
+        val sessionId = session.id ?: return MeetingService.EndResult.SessionNotFound
+        return MeetingService.EndResult.ClosedMissingThread(
+            sessionId = sessionId,
+            threadId = session.threadId,
         )
     }
 
