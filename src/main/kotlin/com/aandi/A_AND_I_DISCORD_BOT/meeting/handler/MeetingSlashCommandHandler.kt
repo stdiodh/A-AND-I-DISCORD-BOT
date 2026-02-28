@@ -10,8 +10,10 @@ import net.dv8tion.jda.api.components.buttons.Button
 import net.dv8tion.jda.api.entities.channel.ChannelType
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent
 import net.dv8tion.jda.api.hooks.ListenerAdapter
+import org.slf4j.LoggerFactory
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Component
+import java.util.concurrent.CompletableFuture
 
 @Component
 @ConditionalOnProperty(name = ["discord.enabled"], havingValue = "true", matchIfMissing = true)
@@ -21,6 +23,8 @@ class MeetingSlashCommandHandler(
     private val permissionGate: PermissionGate,
     private val discordReplyFactory: DiscordReplyFactory,
 ) : ListenerAdapter() {
+
+    private val log = LoggerFactory.getLogger(javaClass)
 
     override fun onSlashCommandInteraction(event: SlashCommandInteractionEvent) {
         if (event.name != COMMAND_NAME_KO && event.name != COMMAND_NAME_EN) {
@@ -114,13 +118,19 @@ class MeetingSlashCommandHandler(
             ?.idLong
         event.deferReply(true).queue(
             {
-                handleEndMeetingAfterDefer(
-                    event = event,
-                    guildId = guild.idLong,
-                    requestedBy = member.idLong,
-                    fallbackThreadId = fallbackThreadId,
-                    requestedThreadId = requestedThreadId,
-                )
+                CompletableFuture.runAsync {
+                    runCatching {
+                        handleEndMeetingAfterDefer(
+                            event = event,
+                            guildId = guild.idLong,
+                            requestedBy = member.idLong,
+                            fallbackThreadId = fallbackThreadId,
+                            requestedThreadId = requestedThreadId,
+                        )
+                    }.onFailure { exception ->
+                        handleEndMeetingFailure(event, guild.idLong, requestedThreadId, exception)
+                    }
+                }
             },
             {
                 discordReplyFactory.internalError(event, "응답 초기화에 실패했습니다. 잠시 후 다시 시도해 주세요.")
@@ -246,6 +256,25 @@ class MeetingSlashCommandHandler(
             return null
         }
         return raw.trim().toLongOrNull()
+    }
+
+    private fun handleEndMeetingFailure(
+        event: SlashCommandInteractionEvent,
+        guildId: Long,
+        requestedThreadId: Long?,
+        exception: Throwable,
+    ) {
+        log.error(
+            "회의 종료 처리 실패: guildId={}, requestedThreadId={}",
+            guildId,
+            requestedThreadId,
+            exception,
+        )
+        runCatching {
+            event.hook.sendMessage("회의 종료 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.")
+                .setEphemeral(true)
+                .queue()
+        }
     }
 
     private fun hasManageServerPermission(member: net.dv8tion.jda.api.entities.Member): Boolean {
