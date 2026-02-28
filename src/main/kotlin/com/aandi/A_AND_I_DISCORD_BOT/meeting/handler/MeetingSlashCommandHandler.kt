@@ -225,6 +225,14 @@ class MeetingSlashCommandHandler(
                 event.hook.sendMessage("이미 종료된 회의입니다.").setEphemeral(true).queue()
             }
 
+            is MeetingService.EndResult.ClosedMissingThread -> {
+                event.hook.sendMessage(
+                    "회의 스레드가 이미 삭제되어 세션만 종료 처리했습니다. 세션ID `${result.sessionId}` / threadId `${result.threadId}`",
+                )
+                    .setEphemeral(true)
+                    .queue()
+            }
+
             is MeetingService.EndResult.ThreadNotFound -> {
                 event.hook.sendMessage("요약 대상 스레드를 찾지 못했습니다. (threadId=${result.threadId})")
                     .setEphemeral(true)

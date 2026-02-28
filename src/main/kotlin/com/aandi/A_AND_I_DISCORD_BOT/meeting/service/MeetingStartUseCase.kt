@@ -30,10 +30,7 @@ class MeetingStartUseCase(
         fallbackChannelId: Long?,
         rawTitle: String?,
     ): MeetingService.StartResult {
-        val activeSession = meetingSessionRepository.findFirstByGuildIdAndStatusOrderByStartedAtDesc(
-            guildId,
-            MeetingSessionStatus.ACTIVE,
-        )
+        val activeSession = resolveActiveSessionOrCleanup(guildId, requestedBy)
         if (activeSession != null) {
             return MeetingService.StartResult.AlreadyActive(activeSession.threadId)
         }
@@ -67,6 +64,28 @@ class MeetingStartUseCase(
             threadId = thread.idLong,
             threadName = thread.name,
         )
+    }
+
+    private fun resolveActiveSessionOrCleanup(guildId: Long, requestedBy: Long): MeetingSessionEntity? {
+        while (true) {
+            val activeSession = meetingSessionRepository.findFirstByGuildIdAndStatusOrderByStartedAtDesc(
+                guildId,
+                MeetingSessionStatus.ACTIVE,
+            ) ?: return null
+            if (meetingThreadGateway.findThreadChannel(activeSession.threadId) != null) {
+                return activeSession
+            }
+            closeMissingThreadSession(activeSession, requestedBy)
+        }
+    }
+
+    private fun closeMissingThreadSession(session: MeetingSessionEntity, requestedBy: Long) {
+        val nowUtc = Instant.now(clock)
+        session.status = MeetingSessionStatus.ENDED
+        session.endedBy = requestedBy
+        session.endedAt = nowUtc
+        session.updatedAt = nowUtc
+        meetingSessionRepository.save(session)
     }
 
     private fun resolveThreadName(rawTitle: String?): String {
