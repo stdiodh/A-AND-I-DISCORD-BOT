@@ -26,4 +26,10 @@ class GuildConfig(
 
     @Column(name = "dashboard_message_id")
     var dashboardMessageId: Long? = null,
+
+    @Column(name = "default_task_channel_id")
+    var defaultTaskChannelId: Long? = null,
+
+    @Column(name = "default_notify_role_id")
+    var defaultNotifyRoleId: Long? = null,
 )

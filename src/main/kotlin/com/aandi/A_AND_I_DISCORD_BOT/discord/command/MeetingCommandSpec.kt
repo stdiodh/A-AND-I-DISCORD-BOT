@@ -28,6 +28,12 @@ class MeetingCommandSpec : DiscordCommandSpec {
                         .addOption(OptionType.STRING, "제목", "안건 제목(선택)", false),
                     SubcommandData("안건조회", "오늘 회의 안건 링크를 조회합니다."),
                 ),
+            Commands.slash("결정", "진행 중 회의에 결정을 기록합니다.")
+                .addOption(OptionType.STRING, "내용", "결정 내용", true),
+            Commands.slash("액션", "진행 중 회의에 액션을 기록합니다.")
+                .addOption(OptionType.STRING, "내용", "액션 내용", true)
+                .addOption(OptionType.USER, "담당자", "담당자(선택)", false)
+                .addOption(OptionType.STRING, "기한", "기한(YYYY-MM-DD, 선택)", false),
         )
     }
 }

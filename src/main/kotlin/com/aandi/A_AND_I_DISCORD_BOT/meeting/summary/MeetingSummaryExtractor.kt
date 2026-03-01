@@ -9,12 +9,14 @@ class MeetingSummaryExtractor {
     fun extract(messages: List<MeetingMessage>): MeetingSummary {
         val decisions = mutableListOf<String>()
         val actionItems = mutableListOf<String>()
+        val todos = mutableListOf<String>()
         val candidateHighlights = mutableListOf<String>()
 
         messages.forEach { message ->
             parseLines(message.content).forEach { line ->
                 extractDecision(line)?.let { decisions.add(it) }
                 extractActionItem(line)?.let { actionItems.add(it) }
+                extractTodo(line)?.let { todos.add(it) }
                 if (isHighlightCandidate(line)) {
                     candidateHighlights.add(line)
                 }
@@ -29,6 +31,7 @@ class MeetingSummaryExtractor {
         return MeetingSummary(
             decisions = decisions.distinct().take(MAX_DECISIONS),
             actionItems = actionItems.distinct().take(MAX_ACTION_ITEMS),
+            todos = todos.distinct().take(MAX_TODOS),
             highlights = highlights,
         )
     }
@@ -52,6 +55,17 @@ class MeetingSummaryExtractor {
     private fun extractActionItem(line: String): String? {
         val normalized = normalizePrefix(line)
         ACTION_PATTERNS.forEach { pattern ->
+            val match = pattern.find(normalized)
+            if (match != null) {
+                return match.groupValues[1].trim()
+            }
+        }
+        return null
+    }
+
+    private fun extractTodo(line: String): String? {
+        val normalized = normalizePrefix(line)
+        TODO_PATTERNS.forEach { pattern ->
             val match = pattern.find(normalized)
             if (match != null) {
                 return match.groupValues[1].trim()
@@ -86,12 +100,14 @@ class MeetingSummaryExtractor {
     data class MeetingSummary(
         val decisions: List<String>,
         val actionItems: List<String>,
+        val todos: List<String>,
         val highlights: List<String>,
     )
 
     companion object {
         private const val MAX_DECISIONS = 5
         private const val MAX_ACTION_ITEMS = 8
+        private const val MAX_TODOS = 10
         private const val MAX_HIGHLIGHTS = 5
 
         private val PREFIX_PATTERN = Regex("""^(?:>\s*)?(?:[-*•]\s*)?""")
@@ -102,6 +118,11 @@ class MeetingSummaryExtractor {
 
         private val ACTION_PATTERNS = listOf(
             Regex("^(?:액션|할일|todo|action\\s*item|task)\\s*[:：-]\\s*(.+)$", RegexOption.IGNORE_CASE),
+            Regex("^(?:-\\s*)?\\[ \\]\\s*(.+)$"),
+        )
+
+        private val TODO_PATTERNS = listOf(
+            Regex("^(?:todo|해야할\\s*일|후속\\s*작업)\\s*[:：-]\\s*(.+)$", RegexOption.IGNORE_CASE),
             Regex("^(?:-\\s*)?\\[ \\]\\s*(.+)$"),
         )
     }

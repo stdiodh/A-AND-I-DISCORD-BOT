@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional
 class MeetingService(
     private val meetingStartUseCase: MeetingStartUseCase,
     private val meetingEndUseCase: MeetingEndUseCase,
+    private val meetingStructuredCaptureUseCase: MeetingStructuredCaptureUseCase,
 ) {
 
     @Transactional
@@ -34,12 +35,93 @@ class MeetingService(
         requestedBy: Long,
         fallbackThreadId: Long?,
         requestedThreadId: Long?,
+        progress: ((SummaryProgress) -> Unit)? = null,
     ): EndResult {
         return meetingEndUseCase.endMeeting(
             guildId = guildId,
             requestedBy = requestedBy,
             fallbackThreadId = fallbackThreadId,
             requestedThreadId = requestedThreadId,
+            progress = progress,
+        )
+    }
+
+    @Transactional
+    fun regenerateSummary(
+        guildId: Long,
+        requestedBy: Long,
+        meetingSessionId: Long,
+        progress: ((SummaryProgress) -> Unit)? = null,
+    ): SummaryMutationResult {
+        return meetingEndUseCase.regenerateSummary(
+            guildId = guildId,
+            requestedBy = requestedBy,
+            meetingSessionId = meetingSessionId,
+            progress = progress,
+        )
+    }
+
+    @Transactional
+    fun addManualDecision(
+        guildId: Long,
+        requestedBy: Long,
+        meetingSessionId: Long,
+        decision: String,
+    ): SummaryMutationResult {
+        return meetingEndUseCase.addManualDecision(
+            guildId = guildId,
+            requestedBy = requestedBy,
+            meetingSessionId = meetingSessionId,
+            decision = decision,
+        )
+    }
+
+    @Transactional
+    fun addManualAction(
+        guildId: Long,
+        requestedBy: Long,
+        meetingSessionId: Long,
+        action: String,
+    ): SummaryMutationResult {
+        return meetingEndUseCase.addManualAction(
+            guildId = guildId,
+            requestedBy = requestedBy,
+            meetingSessionId = meetingSessionId,
+            action = action,
+        )
+    }
+
+    @Transactional
+    fun captureDecision(
+        guildId: Long,
+        requestedBy: Long,
+        fallbackThreadId: Long?,
+        content: String,
+    ): StructuredCaptureResult {
+        return meetingStructuredCaptureUseCase.captureDecision(
+            guildId = guildId,
+            requestedBy = requestedBy,
+            fallbackThreadId = fallbackThreadId,
+            content = content,
+        )
+    }
+
+    @Transactional
+    fun captureAction(
+        guildId: Long,
+        requestedBy: Long,
+        fallbackThreadId: Long?,
+        content: String,
+        assigneeUserId: Long?,
+        dueDateLocal: java.time.LocalDate?,
+    ): StructuredCaptureResult {
+        return meetingStructuredCaptureUseCase.captureAction(
+            guildId = guildId,
+            requestedBy = requestedBy,
+            fallbackThreadId = fallbackThreadId,
+            content = content,
+            assigneeUserId = assigneeUserId,
+            dueDateLocal = dueDateLocal,
         )
     }
 
@@ -62,10 +144,13 @@ class MeetingService(
             val threadId: Long,
             val summaryMessageId: Long,
             val sourceMessageCount: Int,
+            val participantCount: Int,
+            val summaryArtifactId: Long?,
             val agendaTitle: String?,
             val agendaUrl: String?,
             val decisions: List<String>,
             val actionItems: List<String>,
+            val todos: List<String>,
             val archived: Boolean,
         ) : EndResult
 
@@ -76,5 +161,47 @@ class MeetingService(
         data object SessionNotFound : EndResult
         data object AlreadyEnded : EndResult
         data class ThreadNotFound(val threadId: Long) : EndResult
+    }
+
+    sealed interface SummaryMutationResult {
+        data class Success(
+            val sessionId: Long,
+            val threadId: Long,
+            val summaryMessageId: Long,
+            val sourceMessageCount: Int,
+            val participantCount: Int,
+            val summaryArtifactId: Long?,
+            val decisions: List<String>,
+            val actionItems: List<String>,
+            val todos: List<String>,
+        ) : SummaryMutationResult
+
+        data object SessionNotFound : SummaryMutationResult
+        data object ArtifactNotFound : SummaryMutationResult
+        data class ThreadNotFound(val threadId: Long) : SummaryMutationResult
+    }
+
+    sealed interface SummaryProgress {
+        data object Collecting : SummaryProgress
+        data class Collected(val messageCount: Int) : SummaryProgress
+    }
+
+    sealed interface StructuredCaptureResult {
+        data class Success(
+            val sessionId: Long,
+            val threadId: Long,
+            val itemId: Long,
+            val type: StructuredCaptureType,
+            val summaryLine: String,
+        ) : StructuredCaptureResult
+
+        data object SessionNotFound : StructuredCaptureResult
+        data object MeetingNotActive : StructuredCaptureResult
+        data class ThreadNotFound(val threadId: Long) : StructuredCaptureResult
+    }
+
+    enum class StructuredCaptureType {
+        DECISION,
+        ACTION,
     }
 }

@@ -61,8 +61,30 @@ class GuildConfigService(
         )
     }
 
+    @Transactional
+    fun getTaskDefaults(guildId: Long): TaskDefaultConfig {
+        val config = getOrCreate(guildId)
+        return TaskDefaultConfig(
+            defaultTaskChannelId = config.defaultTaskChannelId,
+            defaultNotifyRoleId = config.defaultNotifyRoleId,
+        )
+    }
+
+    @Transactional
+    fun setTaskDefaults(guildId: Long, defaultTaskChannelId: Long?, defaultNotifyRoleId: Long?): GuildConfig {
+        val config = getOrCreate(guildId)
+        config.defaultTaskChannelId = defaultTaskChannelId
+        config.defaultNotifyRoleId = defaultNotifyRoleId
+        return guildConfigRepository.save(config)
+    }
+
     data class DashboardConfig(
         val channelId: Long?,
         val messageId: Long?,
+    )
+
+    data class TaskDefaultConfig(
+        val defaultTaskChannelId: Long?,
+        val defaultNotifyRoleId: Long?,
     )
 }

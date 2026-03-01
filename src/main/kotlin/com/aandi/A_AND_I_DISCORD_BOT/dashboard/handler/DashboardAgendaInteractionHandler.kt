@@ -2,6 +2,7 @@ package com.aandi.A_AND_I_DISCORD_BOT.dashboard.handler
 
 import com.aandi.A_AND_I_DISCORD_BOT.agenda.service.AgendaService
 import com.aandi.A_AND_I_DISCORD_BOT.common.auth.PermissionGate
+import com.aandi.A_AND_I_DISCORD_BOT.common.discord.InteractionReliabilityGuard
 import com.aandi.A_AND_I_DISCORD_BOT.dashboard.ui.DashboardActionIds
 import com.aandi.A_AND_I_DISCORD_BOT.dashboard.ui.HomeCustomIdParser
 import com.aandi.A_AND_I_DISCORD_BOT.discord.interaction.InteractionPrefixHandler
@@ -13,12 +14,14 @@ import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent
 import net.dv8tion.jda.api.modals.Modal
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Component
+import java.util.concurrent.CompletableFuture
 
 @Component
 @ConditionalOnProperty(name = ["discord.enabled"], havingValue = "true", matchIfMissing = true)
 class DashboardAgendaInteractionHandler(
     private val permissionGate: PermissionGate,
     private val agendaService: AgendaService,
+    private val interactionReliabilityGuard: InteractionReliabilityGuard,
 ) : InteractionPrefixHandler {
 
     override fun supports(prefix: String): Boolean {
@@ -93,33 +96,45 @@ class DashboardAgendaInteractionHandler(
             return
         }
 
-        val result = agendaService.setTodayAgenda(
-            guildId = guild.idLong,
-            requesterUserId = member.idLong,
-            requesterRoleIds = member.roles.map { it.idLong }.toSet(),
-            hasManageServerPermission = permissionGate.canAdminAction(guild.idLong, member),
-            rawUrl = url,
-            rawTitle = event.getValue("제목")?.asString,
+        interactionReliabilityGuard.safeDefer(
+            interaction = event,
+            preferUpdate = false,
+            onDeferred = { ctx ->
+                CompletableFuture.runAsync {
+                    val result = agendaService.setTodayAgenda(
+                        guildId = guild.idLong,
+                        requesterUserId = member.idLong,
+                        requesterRoleIds = member.roles.map { it.idLong }.toSet(),
+                        hasManageServerPermission = permissionGate.canAdminAction(guild.idLong, member),
+                        rawUrl = url,
+                        rawTitle = event.getValue("제목")?.asString,
+                    )
+                    when (result) {
+                        is AgendaService.SetAgendaResult.Success -> {
+                            interactionReliabilityGuard.safeEditReply(ctx, "오늘 안건 링크를 저장했습니다: ${result.title}")
+                        }
+
+                        AgendaService.SetAgendaResult.Forbidden -> {
+                            interactionReliabilityGuard.safeEditReply(ctx, "안건 설정 권한이 없습니다.")
+                        }
+
+                        AgendaService.SetAgendaResult.InvalidUrl -> {
+                            interactionReliabilityGuard.safeEditReply(ctx, "URL 형식이 올바르지 않습니다.")
+                        }
+
+                        AgendaService.SetAgendaResult.InvalidTitle -> {
+                            interactionReliabilityGuard.safeEditReply(ctx, "제목 길이가 너무 깁니다.")
+                        }
+                    }
+                }
+            },
+            onFailure = { ctx, _ ->
+                interactionReliabilityGuard.safeFailureReply(
+                    ctx = ctx,
+                    alternativeCommandGuide = "`/안건 등록` 명령으로 다시 시도해 주세요.",
+                )
+            },
         )
-        when (result) {
-            is AgendaService.SetAgendaResult.Success -> {
-                event.reply("오늘 안건 링크를 저장했습니다: ${result.title}")
-                    .setEphemeral(true)
-                    .queue()
-            }
-
-            AgendaService.SetAgendaResult.Forbidden -> {
-                event.reply("안건 설정 권한이 없습니다.").setEphemeral(true).queue()
-            }
-
-            AgendaService.SetAgendaResult.InvalidUrl -> {
-                event.reply("URL 형식이 올바르지 않습니다.").setEphemeral(true).queue()
-            }
-
-            AgendaService.SetAgendaResult.InvalidTitle -> {
-                event.reply("제목 길이가 너무 깁니다.").setEphemeral(true).queue()
-            }
-        }
     }
 
     companion object {
