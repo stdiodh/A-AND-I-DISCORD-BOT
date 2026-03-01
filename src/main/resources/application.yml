@@ -45,6 +45,11 @@ voice:
     max-minutes: ${VOICE_SUMMARY_MAX_MINUTES:120}
     data-dir: ${VOICE_SUMMARY_DATA_DIR:/data/voice}
 
+feature:
+  home-v2: ${FEATURE_HOME_V2:false}
+  meeting-summary-v2: ${FEATURE_MEETING_SUMMARY_V2:false}
+  task-quickregister-v2: ${FEATURE_TASK_QUICKREGISTER_V2:false}
+
 logging:
   level:
     net.dv8tion.jda: INFO

@@ -2,6 +2,7 @@ package com.aandi.A_AND_I_DISCORD_BOT.discord.interaction
 
 import net.dv8tion.jda.api.events.interaction.ModalInteractionEvent
 import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent
+import net.dv8tion.jda.api.events.interaction.component.EntitySelectInteractionEvent
 import net.dv8tion.jda.api.events.interaction.component.StringSelectInteractionEvent
 import net.dv8tion.jda.api.hooks.ListenerAdapter
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
@@ -22,6 +23,11 @@ class InteractionRouter(
     override fun onStringSelectInteraction(event: StringSelectInteractionEvent) {
         val prefix = extractPrefix(event.componentId) ?: return
         dispatchStringSelect(prefix, event)
+    }
+
+    override fun onEntitySelectInteraction(event: EntitySelectInteractionEvent) {
+        val prefix = extractPrefix(event.componentId) ?: return
+        dispatchEntitySelect(prefix, event)
     }
 
     override fun onModalInteraction(event: ModalInteractionEvent) {
@@ -53,6 +59,13 @@ class InteractionRouter(
             .asSequence()
             .filter { it.supports(prefix) }
             .firstOrNull { it.onStringSelect(event) }
+    }
+
+    private fun dispatchEntitySelect(prefix: String, event: EntitySelectInteractionEvent) {
+        handlers
+            .asSequence()
+            .filter { it.supports(prefix) }
+            .firstOrNull { it.onEntitySelect(event) }
     }
 
     private fun dispatchModal(prefix: String, event: ModalInteractionEvent) {

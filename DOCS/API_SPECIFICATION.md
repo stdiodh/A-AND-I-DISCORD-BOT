@@ -62,6 +62,14 @@
 - 민감/설정 변경: 기본 `ephemeral`
 - 랭킹: 공개 채널 출력(선호) 또는 서버 정책에 따라 ephemeral
 
+### 기능 플래그
+- `FEATURE_HOME_V2` (default: false)
+  - 홈 대시보드 V2 UI(2개 주요 버튼 + 더보기 셀렉트) 활성화
+- `FEATURE_MEETING_SUMMARY_V2` (default: false)
+  - 회의 요약 파이프라인 V2(수집 윈도우, 요약 산출물 저장, 재생성/수동보강 UI) 활성화
+- `FEATURE_TASK_QUICKREGISTER_V2` (default: false)
+  - 과제 빠른등록 V2(모달+2단계 선택) 활성화
+
 ### 명령어 표기 정책
 - 기본 슬래시 커맨드는 한글 명칭을 사용한다. (`/핑`, `/안건`, `/모각코`, `/과제`, `/설정`)
 - 전환 기간 호환을 위해 기존 영문 명령(`ping`, `agenda`, `mogakco`)도 라우팅에서 허용한다.
@@ -82,16 +90,35 @@
 |--------|-----|----------|---------|----------|------|
 | SLASH | `/홈 생성` | 홈 대시보드 메시지 생성 | **Options:**<br>- `채널` (TextChannel, required) | 임베드+버튼 홈 메시지 생성 후 `guild_config.dashboard_channel_id`/`dashboard_message_id` 저장 | ADMIN_ROLE 또는 (admin_role_id 미설정 시) Manage Server/Administrator |
 | SLASH | `/홈 갱신` | 기존 홈 대시보드 메시지 갱신 | 없음 | 저장된 홈 메시지 내용/버튼 갱신 | ADMIN_ROLE 또는 (admin_role_id 미설정 시) Manage Server/Administrator |
+| SLASH | `/홈 설치` | 홈 메시지를 보장 생성/복구하고 핀 상태를 점검 | **Options:**<br>- `채널` (TextChannel, optional, 기본: 현재 채널) | HomeMessageManager로 단일 홈 보장(재사용/복구/신규 생성) + 핀 시도 결과를 홈 임베드에 반영 | ADMIN_ROLE 또는 (admin_role_id 미설정 시) Manage Server/Administrator |
 
 ### 홈 버튼 인터랙션
-- 버튼: `[회의] [안건 설정] [과제 등록] [과제 목록] [모각코 랭킹] [내 기록]`
-- 목표: 명령어 타이핑 최소화. 버튼 → 모달/셀렉트로 이어지는 흐름 제공
+- HOME_V2(`FEATURE_HOME_V2=true`) 기준:
+  - 1행 버튼: `[회의 시작/회의 종료] [과제 등록]`
+  - 2행 셀렉트: `[더보기]`
+    - 안건 설정
+    - 과제 전체 보기
+    - 모각코 전체 보기
+    - 내 기록(개인)
+    - 설정/도움말
+  - `내 기록(개인)`은 ephemeral 응답으로 채널 스팸을 방지한다.
+- HOME_V2 비활성 시 기존 버튼 구성을 유지한다.
+- 목표: 명령어 타이핑 최소화. 버튼/셀렉트 → 모달/후속 액션 흐름 제공
 - `custom_id` 규칙:
   - 대시보드 고정 버튼: `dash:*`
   - 회의 관련 모달/동작: `meeting:*`
   - 과제 관련 모달/동작: `assign:*`
   - 모각코 셀렉트: `mogakco:*`
+  - 홈 더보기 셀렉트: `home:more_select`
 - 이벤트 라우팅은 prefix 기반 `InteractionRouter`가 처리한다.
+
+### 홈 메시지 보장 규칙
+- 길드별 홈 메시지는 단일 레퍼런스를 유지한다. (`guild_config.dashboard_channel_id`, `dashboard_message_id`)
+- `ensureHomeMessage` 호출 시:
+  1. 저장된 메시지가 존재하면 재사용
+  2. 저장 레퍼런스 메시지가 없으면 최근 메시지에서 홈 마커 검색 후 복구
+  3. 둘 다 실패 시 신규 생성 후 레퍼런스 저장
+- 홈 갱신은 기존 메시지 `edit` 기반으로 수행한다.
 
 ---
 
@@ -113,6 +140,8 @@
 | SLASH | `/회의 종료` | 회의 요약 생성 후 세션 종료/스레드 아카이브 | 없음 | 결정/액션아이템/핵심문장 요약 임베드 게시 후 종료 임베드/아카이브 처리 | ADMIN_ROLE 또는 (admin_role_id 미설정 시) Manage Server/Administrator |
 | SLASH | `/회의 안건등록` | 오늘 회의 안건 링크 등록/수정 | **Options:**<br>- `링크` (String, required): http/https 링크<br>- `제목` (String, optional) | 등록 성공 메시지 + 링크 버튼 | ADMIN_ROLE |
 | SLASH | `/회의 안건조회` | 오늘 회의 안건 링크 조회 | 없음 | 등록된 링크 안내 + 링크 버튼 (없으면 미등록 안내) | ANY |
+| SLASH | `/결정` | 진행 중 회의에 결정 항목을 구조화 기록 | **Options:**<br>- `내용` (String, required) | 회의 세션/스레드/항목ID와 함께 저장 완료 메시지 | ADMIN_ROLE 또는 (admin_role_id 미설정 시) Manage Server/Administrator |
+| SLASH | `/액션` | 진행 중 회의에 액션 항목을 구조화 기록 | **Options:**<br>- `내용` (String, required)<br>- `담당자` (User, optional)<br>- `기한` (String, optional, YYYY-MM-DD) | 회의 세션/스레드/항목ID와 함께 저장 완료 메시지 | ADMIN_ROLE 또는 (admin_role_id 미설정 시) Manage Server/Administrator |
 
 ### 회의 시작 처리 규칙
 - `/회의 시작`은 지정 채널에 "회의 시작" 임베드를 먼저 게시하고, 그 메시지에서 스레드를 생성한다.
@@ -122,14 +151,22 @@
 - 오늘 안건이 있으면 스레드 첫 메시지에 링크 버튼(`오늘 안건 링크`)을 포함한다.
 - 회의 스레드 생성 시 템플릿 메시지를 함께 게시한다.
 
-### 회의 종료 요약 규칙 (MVP0, 0원)
-- 음성 요약이 아닌 **스레드 텍스트 기반 요약**을 사용한다.
-- 스레드 메시지에서 정규식 패턴으로 `결정`/`액션아이템`을 추출한다.
-- 핵심문장은 명령어/URL 라인을 제외한 텍스트 후보에서 추출한다.
-- 요약 임베드에는 `액션아이템 → 과제 등록` 버튼을 포함한다.
-- 종료 시 `meeting_sessions` 상태를 `ACTIVE -> ENDED`로 전이한다.
-- 종료 응답은 세션과 연결된 안건 정보(제목/링크)를 함께 노출한다.
-- 종료 시 종료 임베드를 게시하고 대상 스레드를 아카이브한다.
+### 회의 종료 요약 규칙
+- 기본은 **스레드 텍스트 기반 요약**이며, `FEATURE_MEETING_SUMMARY_V2` 플래그로 V2 동작을 제어한다.
+- V2 활성 시:
+  - 수집 범위: `meetingStart ~ meetingEnd + buffer(기본 3초)` 윈도우
+  - 메시지 수집은 배치/페이지 기반으로 수행하고, 결과 메시지 수(`messageCount`)를 기록한다.
+  - 구조화 항목(`/결정`, `/액션`)과 추출 항목을 정규화 후 병합/중복제거한다.
+  - 요약 임베드에 통계(`결정/액션/TODO/참여자`) 및 원문 수집 범위를 포함한다.
+  - 요약 액션 버튼:
+    - `요약 재생성`
+    - `결정 추가`
+    - `액션 추가`
+    - `원문 보기/메시지 수 N개`
+  - 요약 결과는 가능하면 기존 요약 메시지를 `edit`하여 중복 게시를 방지한다.
+  - 요약 산출물은 `meeting_summary_artifacts`에 버전/수집범위/카운트와 함께 저장한다.
+- V2 비활성 시 기존 MVP0(패턴 기반 추출) 동작을 유지한다.
+- 종료 시 `meeting_sessions` 상태를 `ACTIVE -> ENDED`로 전이하고, 종료 임베드를 게시한 뒤 대상 스레드를 아카이브한다.
 
 ---
 
@@ -186,13 +223,24 @@
 - `CANCELED` 과제는 `/과제 목록`에서 기본적으로 노출하지 않는다.
 - 상태 필터로도 `취소/CANCELED` 조회는 허용하지 않는다.
 
-### 과제 빠른 등록 모달(대시보드 버튼)
-- `제목`: 예 `3주차 API 과제 제출`
-- `링크`: 예 `https://lms.example.com/tasks/123`
-- `알림시각`: 예 `2026-03-01 21:30` (KST)
-- `마감시각`: 예 `2026-03-02 23:59` (KST)
-- `채널`: 예 `#과제공지` 또는 `123456789012345678`
-- 빠른 등록은 `알림역할/종료메시지` 기본값(없음)으로 생성한다.
+### 과제 빠른 등록 (V2, `FEATURE_TASK_QUICKREGISTER_V2=true`)
+- 1단계 모달 입력(최소화)
+  - `제목` (required)
+  - `링크` (optional)
+  - `마감일` (optional, 미입력 시 내일 23:59 KST)
+  - `알림 시간/옵션` (optional, 절대시각/상대시간/`24,3,1` 형식)
+- 2단계 선택 UI (ephemeral)
+  - 채널 선택(EntitySelect)
+  - 역할 선택(EntitySelect, optional)
+  - 멘션 여부(StringSelect)
+  - 미리보기 임베드 + `[등록 확정] [취소]`
+- 기본값 정책
+  - 길드 기본값: `guild_config.default_task_channel_id`, `default_notify_role_id`
+  - 사용자 최근값: `guild_user_task_preferences`
+- 확정 처리
+  - 선택 채널 접근/전송 불가 시 재선택 유도
+  - 역할 멘션 불가 시 멘션 없이 등록(degrade)
+  - 성공 시 과제 생성 후 목록 진입 경로 안내
 
 ---
 
@@ -256,6 +304,8 @@
 - `mogakco_active_minutes` (기본: 30)
 - `dashboard_channel_id` (BIGINT, nullable)
 - `dashboard_message_id` (BIGINT, nullable)
+- `default_task_channel_id` (BIGINT, nullable)
+- `default_notify_role_id` (BIGINT, nullable)
 
 ### agenda_links
 - `id` (PK)
@@ -324,6 +374,59 @@
 - CHECK(`status IN ('ACTIVE','ENDED')`)
 - INDEX(`guild_id`, `status`, `started_at DESC`)
 - UNIQUE PARTIAL INDEX(`guild_id`) WHERE `status='ACTIVE'`
+
+### meeting_summary_artifacts
+- `id` (BIGSERIAL PK)
+- `meeting_session_id` (BIGINT NOT NULL, FK -> `meeting_sessions.id`, ON DELETE CASCADE)
+- `guild_id` (BIGINT NOT NULL)
+- `thread_id` (BIGINT NOT NULL)
+- `summary_message_id` (BIGINT NULL)
+- `message_count` (INT NOT NULL)
+- `participant_count` (INT NOT NULL)
+- `decision_count` (INT NOT NULL)
+- `action_count` (INT NOT NULL)
+- `todo_count` (INT NOT NULL)
+- `generated_at` (TIMESTAMPTZ NOT NULL)
+- `version` (VARCHAR(16) NOT NULL)
+- `source_window_start` (TIMESTAMPTZ NOT NULL)
+- `source_window_end` (TIMESTAMPTZ NOT NULL)
+- `source_buffer_seconds` (INT NOT NULL)
+- `decisions_text` (TEXT NULL)
+- `actions_text` (TEXT NULL)
+- `todos_text` (TEXT NULL)
+- `created_at` (TIMESTAMPTZ NOT NULL DEFAULT NOW())
+- `updated_at` (TIMESTAMPTZ NOT NULL DEFAULT NOW())
+- INDEX(`meeting_session_id`, `generated_at DESC`)
+- INDEX(`guild_id`, `thread_id`, `generated_at DESC`)
+
+### meeting_structured_items
+- `id` (BIGSERIAL PK)
+- `meeting_session_id` (BIGINT NOT NULL, FK -> `meeting_sessions.id`, ON DELETE CASCADE)
+- `guild_id` (BIGINT NOT NULL)
+- `thread_id` (BIGINT NOT NULL)
+- `item_type` (VARCHAR(16) NOT NULL, `DECISION`/`ACTION`)
+- `content` (TEXT NOT NULL)
+- `assignee_user_id` (BIGINT NULL)
+- `due_date_local` (DATE NULL)
+- `source` (VARCHAR(16) NOT NULL, 기본 `SLASH`)
+- `source_message_id` (BIGINT NULL)
+- `created_by` (BIGINT NOT NULL)
+- `created_at` (TIMESTAMPTZ NOT NULL DEFAULT NOW())
+- `updated_at` (TIMESTAMPTZ NOT NULL DEFAULT NOW())
+- CHECK(`item_type IN ('DECISION','ACTION')`)
+- INDEX(`meeting_session_id`, `created_at ASC`)
+- INDEX(`guild_id`, `thread_id`, `created_at ASC`)
+
+### guild_user_task_preferences
+- PK(`guild_id`, `user_id`)
+- `guild_id` (BIGINT NOT NULL, FK -> `guild_config.guild_id`, ON DELETE CASCADE)
+- `user_id` (BIGINT NOT NULL)
+- `last_task_channel_id` (BIGINT NULL)
+- `last_notify_role_id` (BIGINT NULL)
+- `last_mention_enabled` (BOOLEAN NOT NULL DEFAULT TRUE)
+- `created_at` (TIMESTAMPTZ NOT NULL DEFAULT NOW())
+- `updated_at` (TIMESTAMPTZ NOT NULL DEFAULT NOW())
+- INDEX(`guild_id`, `updated_at DESC`)
 
 ### voice_summary_jobs
 - `id` (BIGSERIAL PK)

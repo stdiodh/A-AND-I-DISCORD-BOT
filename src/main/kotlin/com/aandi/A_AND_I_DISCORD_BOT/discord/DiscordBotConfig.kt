@@ -3,6 +3,8 @@ package com.aandi.A_AND_I_DISCORD_BOT.discord
 import com.aandi.A_AND_I_DISCORD_BOT.admin.handler.AdminSettingSlashCommandHandler
 import com.aandi.A_AND_I_DISCORD_BOT.agenda.handler.AgendaSlashCommandHandler
 import com.aandi.A_AND_I_DISCORD_BOT.assignment.handler.AssignmentSlashCommandHandler
+import com.aandi.A_AND_I_DISCORD_BOT.common.config.FeatureFlagsProperties
+import com.aandi.A_AND_I_DISCORD_BOT.common.log.StructuredLog
 import com.aandi.A_AND_I_DISCORD_BOT.dashboard.handler.HomeSlashCommandHandler
 import com.aandi.A_AND_I_DISCORD_BOT.discord.command.DiscordCommandSpec
 import com.aandi.A_AND_I_DISCORD_BOT.discord.interaction.InteractionRouter
@@ -35,6 +37,7 @@ class DiscordBotConfig(
     private val meetingVoiceSlashCommandHandler: MeetingVoiceSlashCommandHandler,
     private val voiceStateIngestionListener: VoiceStateIngestionListener,
     private val commandSpecs: List<DiscordCommandSpec>,
+    private val featureFlags: FeatureFlagsProperties,
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -45,6 +48,15 @@ class DiscordBotConfig(
         @Value("\${discord.token}") token: String,
         @Value("\${discord.guild-id:}") guildIdRaw: String,
     ): JDA {
+        log.info(
+            StructuredLog.event(
+                name = "feature.flags.loaded",
+                "homeV2" to featureFlags.homeV2,
+                "meetingSummaryV2" to featureFlags.meetingSummaryV2,
+                "taskQuickregisterV2" to featureFlags.taskQuickregisterV2,
+            ),
+        )
+
         val jda = JDABuilder.createDefault(token)
             .enableIntents(GatewayIntent.GUILD_VOICE_STATES)
             .enableCache(CacheFlag.VOICE_STATE)

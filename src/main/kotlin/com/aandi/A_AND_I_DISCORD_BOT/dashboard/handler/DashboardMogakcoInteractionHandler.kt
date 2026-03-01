@@ -1,6 +1,7 @@
 package com.aandi.A_AND_I_DISCORD_BOT.dashboard.handler
 
 import com.aandi.A_AND_I_DISCORD_BOT.common.format.DurationFormatter
+import com.aandi.A_AND_I_DISCORD_BOT.common.discord.InteractionReliabilityGuard
 import com.aandi.A_AND_I_DISCORD_BOT.common.time.PeriodType
 import com.aandi.A_AND_I_DISCORD_BOT.dashboard.ui.DashboardActionIds
 import com.aandi.A_AND_I_DISCORD_BOT.dashboard.ui.HomeCustomIdParser
@@ -19,6 +20,7 @@ import java.util.Locale
 class DashboardMogakcoInteractionHandler(
     private val mogakcoService: MogakcoService,
     private val durationFormatter: DurationFormatter,
+    private val interactionReliabilityGuard: InteractionReliabilityGuard,
 ) : InteractionPrefixHandler {
 
     override fun supports(prefix: String): Boolean {
@@ -109,21 +111,34 @@ class DashboardMogakcoInteractionHandler(
             event.reply("길드에서만 사용할 수 있습니다.").setEphemeral(true).queue()
             return
         }
-        val leaderboard = mogakcoService.getLeaderboard(guild.idLong, period, 10)
-        if (leaderboard.entries.isEmpty()) {
-            event.reply("📭 기록이 없습니다.").setEphemeral(true).queue()
-            return
-        }
+        interactionReliabilityGuard.safeDefer(
+            interaction = event,
+            preferUpdate = false,
+            onDeferred = { ctx ->
+                val leaderboard = mogakcoService.getLeaderboard(guild.idLong, period, 10)
+                if (leaderboard.entries.isEmpty()) {
+                    interactionReliabilityGuard.safeEditReply(ctx, "📭 기록이 없습니다.")
+                    return@safeDefer
+                }
 
-        val maxSeconds = leaderboard.entries.maxOf { it.totalSeconds }.coerceAtLeast(1L)
-        val rows = leaderboard.entries.mapIndexed { index, entry ->
-            val medal = medalForIndex(index)
-            val bar = progressBar(entry.totalSeconds.toDouble() / maxSeconds.toDouble(), 8)
-            "$medal <@${entry.userId}> ${durationFormatter.toHourMinute(entry.totalSeconds)} $bar"
-        }
-        event.reply("${periodLabel(period)} 모각코 랭킹\n${rows.joinToString("\n")}")
-            .setEphemeral(true)
-            .queue()
+                val maxSeconds = leaderboard.entries.maxOf { it.totalSeconds }.coerceAtLeast(1L)
+                val rows = leaderboard.entries.mapIndexed { index, entry ->
+                    val medal = medalForIndex(index)
+                    val bar = progressBar(entry.totalSeconds.toDouble() / maxSeconds.toDouble(), 8)
+                    "$medal <@${entry.userId}> ${durationFormatter.toHourMinute(entry.totalSeconds)} $bar"
+                }
+                interactionReliabilityGuard.safeEditReply(
+                    ctx,
+                    "${periodLabel(period)} 모각코 랭킹\n${rows.joinToString("\n")}",
+                )
+            },
+            onFailure = { ctx, _ ->
+                interactionReliabilityGuard.safeFailureReply(
+                    ctx = ctx,
+                    alternativeCommandGuide = "`/모각코 랭킹` 명령으로 다시 시도해 주세요.",
+                )
+            },
+        )
     }
 
     private fun showMogakcoMe(event: StringSelectInteractionEvent, period: PeriodType) {
@@ -134,16 +149,26 @@ class DashboardMogakcoInteractionHandler(
             return
         }
 
-        val stats = mogakcoService.getMyStats(guild.idLong, member.idLong, period)
-        val message = buildString {
-            appendLine("${periodLabel(period)} 내 기록 📈")
-            appendLine("⏱ 누적시간: ${durationFormatter.toHourMinute(stats.totalSeconds)}")
-            appendLine("📅 참여일: ${stats.activeDays}/${stats.totalDays}일 (기준 ${stats.activeMinutesThreshold}분)")
-            append("📊 참여율: ${formatPercent(stats.participationRate)} ${progressBar(stats.participationRate, 10)}")
-        }
-        event.reply(message)
-            .setEphemeral(true)
-            .queue()
+        interactionReliabilityGuard.safeDefer(
+            interaction = event,
+            preferUpdate = false,
+            onDeferred = { ctx ->
+                val stats = mogakcoService.getMyStats(guild.idLong, member.idLong, period)
+                val message = buildString {
+                    appendLine("${periodLabel(period)} 내 기록 📈")
+                    appendLine("⏱ 누적시간: ${durationFormatter.toHourMinute(stats.totalSeconds)}")
+                    appendLine("📅 참여일: ${stats.activeDays}/${stats.totalDays}일 (기준 ${stats.activeMinutesThreshold}분)")
+                    append("📊 참여율: ${formatPercent(stats.participationRate)} ${progressBar(stats.participationRate, 10)}")
+                }
+                interactionReliabilityGuard.safeEditReply(ctx, message)
+            },
+            onFailure = { ctx, _ ->
+                interactionReliabilityGuard.safeFailureReply(
+                    ctx = ctx,
+                    alternativeCommandGuide = "`/모각코 내기록` 명령으로 다시 시도해 주세요.",
+                )
+            },
+        )
     }
 
     private fun parsePeriod(raw: String?): PeriodType? {

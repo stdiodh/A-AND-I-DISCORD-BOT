@@ -11,5 +11,7 @@ interface MeetingSessionRepository : JpaRepository<MeetingSessionEntity, Long> {
         status: MeetingSessionStatus,
     ): MeetingSessionEntity?
 
+    fun findFirstByGuildIdOrderByStartedAtDesc(guildId: Long): MeetingSessionEntity?
+
     fun findByGuildIdAndThreadId(guildId: Long, threadId: Long): MeetingSessionEntity?
 }

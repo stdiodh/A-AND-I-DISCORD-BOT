@@ -1,7 +1,8 @@
 # A&I Discord Bot
 
 Spring Boot + Kotlin + JDA 기반 디스코드 봇입니다.  
-애플리케이션 시작 시 디스코드에 로그인하고, 길드 슬래시 커맨드 `/ping`, `/agenda`, `/mogakco`를 등록합니다.
+애플리케이션 시작 시 디스코드에 로그인하고, 길드 슬래시 커맨드를 등록합니다.  
+최신 커맨드/권한/응답 계약은 `DOCS/API_SPECIFICATION.md`를 기준으로 관리합니다.
 
 ## Development Rules
 
@@ -10,6 +11,7 @@ Spring Boot + Kotlin + JDA 기반 디스코드 봇입니다.
 - 커밋 컨벤션: [DOCS/COMMIT_CONVENTION.md](DOCS/COMMIT_CONVENTION.md)
 - PR 가이드: [DOCS/PR_GUIDE.md](DOCS/PR_GUIDE.md)
 - 문서 인덱스: [DOCS/README.md](DOCS/README.md)
+- 운영 런북: [DOCS/OPS_RUNBOOK.md](DOCS/OPS_RUNBOOK.md)
 - 기여 가이드: [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## 로컬 실행
@@ -60,6 +62,13 @@ docker compose up -d postgres
 
 ```bash
 ./gradlew bootRun
+```
+
+## 품질 검증 명령
+
+```bash
+./gradlew check
+./gradlew test
 ```
 
 ## Discord/JDA 구성 개요
