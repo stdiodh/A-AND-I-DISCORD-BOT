@@ -164,11 +164,12 @@ class MeetingThreadGateway(
         thread: ThreadChannel,
         summary: MeetingSummaryExtractor.MeetingSummary,
         sourceMessageCount: Int,
+        participantCount: Int,
     ): Message {
         val embed = buildSummaryEmbed(
             summary = summary,
             sourceMessageCount = sourceMessageCount,
-            participantCount = 0,
+            participantCount = participantCount,
             sourceWindowStart = null,
             sourceWindowEnd = null,
             meetingSummaryV2 = false,

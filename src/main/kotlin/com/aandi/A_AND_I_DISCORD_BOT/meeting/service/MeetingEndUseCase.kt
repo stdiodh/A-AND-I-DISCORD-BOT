@@ -17,6 +17,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Service
 import java.time.Clock
 import java.time.Instant
+import java.time.ZoneId
 
 @Service
 @ConditionalOnProperty(name = ["discord.enabled"], havingValue = "true", matchIfMissing = true)
@@ -259,7 +260,13 @@ class MeetingEndUseCase(
                     )
                 },
             )
-            val summaryMessage = meetingThreadGateway.postSummary(thread, legacySummary, legacyMessages.size)
+            val participantCount = legacyMessages.map { it.author.idLong }.toSet().size
+            val summaryMessage = meetingThreadGateway.postSummary(
+                thread = thread,
+                summary = legacySummary,
+                sourceMessageCount = legacyMessages.size,
+                participantCount = participantCount,
+            )
             val durationMs = System.currentTimeMillis() - summaryStartedAtMillis
             log.info(
                 StructuredLog.event(
@@ -269,7 +276,7 @@ class MeetingEndUseCase(
                     "sessionId" to session.id,
                     "mode" to "legacy",
                     "messageCount" to legacyMessages.size,
-                    "participantCount" to legacyMessages.map { it.author.idLong }.toSet().size,
+                    "participantCount" to participantCount,
                     "summaryMessageId" to summaryMessage.idLong,
                     "summaryArtifactId" to null,
                     "durationMs" to durationMs,
@@ -279,7 +286,7 @@ class MeetingEndUseCase(
                 summary = legacySummary,
                 summaryMessageId = summaryMessage.idLong,
                 sourceMessageCount = legacyMessages.size,
-                participantCount = legacyMessages.map { it.author.idLong }.toSet().size,
+                participantCount = participantCount,
                 summaryArtifactId = null,
             )
         }
@@ -529,8 +536,14 @@ class MeetingEndUseCase(
         return message.contentRaw.trim()
     }
 
-    private fun resolveLinkedAgenda(session: MeetingSessionEntity) =
-        session.agendaLinkId?.let { agendaLinkRepository.findById(it).orElse(null) }
+    private fun resolveLinkedAgenda(session: MeetingSessionEntity): com.aandi.A_AND_I_DISCORD_BOT.agenda.entity.AgendaLink? {
+        val linked = session.agendaLinkId?.let { agendaLinkRepository.findById(it).orElse(null) }
+        if (linked != null) {
+            return linked
+        }
+        val meetingDateKst = session.startedAt.atZone(KST_ZONE_ID).toLocalDate()
+        return agendaLinkRepository.findByGuildIdAndDateLocal(session.guildId, meetingDateKst)
+    }
 
     private data class GeneratedSummary(
         val summary: MeetingSummaryExtractor.MeetingSummary,
@@ -547,6 +560,7 @@ class MeetingEndUseCase(
     )
 
     companion object {
+        private val KST_ZONE_ID: ZoneId = ZoneId.of("Asia/Seoul")
         private const val MAX_SUMMARY_MESSAGES = 500
         private const val SUMMARY_GRACE_SECONDS = 3
         private const val SUMMARY_VERSION = "v2"
