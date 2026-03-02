@@ -47,7 +47,7 @@ voice:
 
 feature:
   home-v2: ${FEATURE_HOME_V2:false}
-  meeting-summary-v2: ${FEATURE_MEETING_SUMMARY_V2:false}
+  meeting-summary-v2: ${FEATURE_MEETING_SUMMARY_V2:true}
   task-quickregister-v2: ${FEATURE_TASK_QUICKREGISTER_V2:false}
 
 logging:

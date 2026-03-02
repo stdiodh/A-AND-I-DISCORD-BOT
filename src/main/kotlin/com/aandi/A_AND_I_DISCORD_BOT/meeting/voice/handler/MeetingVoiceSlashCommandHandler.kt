@@ -51,19 +51,19 @@ class MeetingVoiceSlashCommandHandler(
     }
 
     private fun handleStart(event: SlashCommandInteractionEvent, guildId: Long) {
-        val meetingRefId = event.getOption(OPTION_MEETING_ID)?.asLong
+        val meetingRefId = resolveMeetingIdOption(event)
         if (meetingRefId == null) {
-            replyInvalidInput(event, "회의아이디 옵션이 필요합니다.")
+            replyInvalidInput(event, "아이디 옵션이 필요합니다.")
             return
         }
 
-        val voiceChannel = event.getOption(OPTION_VOICE_CHANNEL)?.asChannel
+        val voiceChannel = resolveVoiceChannelOption(event)
         if (voiceChannel == null) {
-            replyInvalidInput(event, "보이스채널 옵션이 필요합니다.")
+            replyInvalidInput(event, "채널 옵션이 필요합니다.")
             return
         }
         if (voiceChannel.type != ChannelType.VOICE && voiceChannel.type != ChannelType.STAGE) {
-            replyInvalidInput(event, "보이스채널은 음성 채널만 가능합니다.")
+            replyInvalidInput(event, "채널은 음성 채널만 가능합니다.")
             return
         }
 
@@ -99,9 +99,9 @@ class MeetingVoiceSlashCommandHandler(
     }
 
     private fun handleStop(event: SlashCommandInteractionEvent, guildId: Long) {
-        val meetingRefId = event.getOption(OPTION_MEETING_ID)?.asLong
+        val meetingRefId = resolveMeetingIdOption(event)
         if (meetingRefId == null) {
-            replyInvalidInput(event, "회의아이디 옵션이 필요합니다.")
+            replyInvalidInput(event, "아이디 옵션이 필요합니다.")
             return
         }
 
@@ -135,9 +135,9 @@ class MeetingVoiceSlashCommandHandler(
     }
 
     private fun handleStatus(event: SlashCommandInteractionEvent, guildId: Long) {
-        val meetingRefId = event.getOption(OPTION_MEETING_ID)?.asLong
+        val meetingRefId = resolveMeetingIdOption(event)
         if (meetingRefId == null) {
-            replyInvalidInput(event, "회의아이디 옵션이 필요합니다.")
+            replyInvalidInput(event, "아이디 옵션이 필요합니다.")
             return
         }
 
@@ -174,6 +174,17 @@ class MeetingVoiceSlashCommandHandler(
         return event.subcommandName == ko || event.subcommandName == en
     }
 
+    private fun resolveMeetingIdOption(event: SlashCommandInteractionEvent): Long? {
+        return event.getOption(OPTION_ID_KO)?.asLong
+            ?: event.getOption(OPTION_MEETING_ID_LEGACY_KO)?.asLong
+            ?: event.getOption(OPTION_MEETING_ID_EN)?.asLong
+    }
+
+    private fun resolveVoiceChannelOption(event: SlashCommandInteractionEvent) =
+        event.getOption(OPTION_CHANNEL_KO)?.asChannel
+            ?: event.getOption(OPTION_VOICE_CHANNEL_LEGACY_KO)?.asChannel
+            ?: event.getOption(OPTION_CHANNEL_EN)?.asChannel
+
     private fun replyInvalidInput(event: SlashCommandInteractionEvent, message: String) {
         replyError(event, DiscordErrorCode.COMMON_INVALID_INPUT, message)
     }
@@ -204,7 +215,11 @@ class MeetingVoiceSlashCommandHandler(
         private const val SUBCOMMAND_STOP_EN = "stop"
         private const val SUBCOMMAND_STATUS_KO = "상태"
         private const val SUBCOMMAND_STATUS_EN = "status"
-        private const val OPTION_MEETING_ID = "회의아이디"
-        private const val OPTION_VOICE_CHANNEL = "보이스채널"
+        private const val OPTION_ID_KO = "아이디"
+        private const val OPTION_MEETING_ID_LEGACY_KO = "회의아이디"
+        private const val OPTION_MEETING_ID_EN = "meetingId"
+        private const val OPTION_CHANNEL_KO = "채널"
+        private const val OPTION_VOICE_CHANNEL_LEGACY_KO = "보이스채널"
+        private const val OPTION_CHANNEL_EN = "channel"
     }
 }

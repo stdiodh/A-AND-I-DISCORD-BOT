@@ -22,12 +22,12 @@ class MogakcoCommandSpec : DiscordCommandSpec {
                         .addSubcommands(
                             SubcommandData("등록", "모각코 채널 등록")
                                 .addOptions(
-                                    OptionData(OptionType.CHANNEL, "음성채널", "모각코 집계 음성채널", true)
+                                    OptionData(OptionType.CHANNEL, "채널", "모각코 집계 음성채널", true)
                                         .setChannelTypes(ChannelType.VOICE, ChannelType.STAGE),
                                 ),
                             SubcommandData("해제", "모각코 채널 등록 해제")
                                 .addOptions(
-                                    OptionData(OptionType.CHANNEL, "음성채널", "등록 해제할 음성채널", true)
+                                    OptionData(OptionType.CHANNEL, "채널", "등록 해제할 음성채널", true)
                                         .setChannelTypes(ChannelType.VOICE, ChannelType.STAGE),
                                 ),
                             SubcommandData("목록", "등록된 모각코 채널 목록 조회"),

@@ -164,11 +164,12 @@ class MeetingThreadGateway(
         thread: ThreadChannel,
         summary: MeetingSummaryExtractor.MeetingSummary,
         sourceMessageCount: Int,
+        participantCount: Int,
     ): Message {
         val embed = buildSummaryEmbed(
             summary = summary,
             sourceMessageCount = sourceMessageCount,
-            participantCount = 0,
+            participantCount = participantCount,
             sourceWindowStart = null,
             sourceWindowEnd = null,
             meetingSummaryV2 = false,
@@ -192,6 +193,8 @@ class MeetingThreadGateway(
         extractedDecisions: List<String> = summary.decisions,
         structuredActions: List<String> = emptyList(),
         extractedActions: List<String> = summary.actionItems,
+        structuredTodos: List<String> = emptyList(),
+        extractedTodos: List<String> = summary.todos,
     ): Message {
         val embed = buildSummaryEmbed(
             summary = summary,
@@ -204,6 +207,8 @@ class MeetingThreadGateway(
             extractedDecisions = extractedDecisions,
             structuredActions = structuredActions,
             extractedActions = extractedActions,
+            structuredTodos = structuredTodos,
+            extractedTodos = extractedTodos,
         )
 
         val components = listOf(
@@ -279,6 +284,8 @@ class MeetingThreadGateway(
         extractedDecisions: List<String> = summary.decisions,
         structuredActions: List<String> = emptyList(),
         extractedActions: List<String> = summary.actionItems,
+        structuredTodos: List<String> = emptyList(),
+        extractedTodos: List<String> = summary.todos,
     ): net.dv8tion.jda.api.entities.MessageEmbed {
         val decisionsText = toBullet(summary.decisions, "추출된 결정 항목이 없습니다.")
         val actionItemsText = toBullet(summary.actionItems, "추출된 액션아이템이 없습니다.")
@@ -303,7 +310,8 @@ class MeetingThreadGateway(
                 .addField("결정(추출)", toBullet(extractedDecisions, "추출된 결정 항목이 없습니다."), false)
                 .addField("액션(구조화)", toBullet(structuredActions, "등록된 액션이 없습니다."), false)
                 .addField("액션(추출)", toBullet(extractedActions, "추출된 액션아이템이 없습니다."), false)
-                .addField("TODO", todosText, false)
+                .addField("TODO(구조화)", toBullet(structuredTodos, "등록된 TODO가 없습니다."), false)
+                .addField("TODO(추출)", toBullet(extractedTodos, "추출된 TODO 항목이 없습니다."), false)
                 .addField("핵심문장", highlightsText, false)
         } else {
             embedBuilder
@@ -313,10 +321,10 @@ class MeetingThreadGateway(
                 .addField("핵심문장", highlightsText, false)
         }
 
-        if (meetingSummaryV2 && summary.decisions.isEmpty() && summary.actionItems.isEmpty()) {
+        if (meetingSummaryV2 && summary.decisions.isEmpty() && summary.actionItems.isEmpty() && summary.todos.isEmpty()) {
             embedBuilder.addField(
                 "안내",
-                "결정/액션을 아직 인식하지 못했어요. 아래에서 추가하거나 재생성할 수 있어요.",
+                "결정/액션/TODO를 아직 인식하지 못했어요. 아래에서 추가하거나 재생성할 수 있어요.",
                 false,
             )
         }

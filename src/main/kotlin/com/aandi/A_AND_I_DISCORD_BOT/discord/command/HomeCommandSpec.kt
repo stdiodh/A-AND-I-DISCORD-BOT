@@ -29,20 +29,6 @@ class HomeCommandSpec : DiscordCommandSpec {
                                 .setChannelTypes(ChannelType.TEXT),
                         ),
                 ),
-            Commands.slash("home", "home dashboard")
-                .addSubcommands(
-                    SubcommandData("create", "create home message")
-                        .addOptions(
-                            OptionData(OptionType.CHANNEL, "channel", "target text channel", true)
-                                .setChannelTypes(ChannelType.TEXT),
-                        ),
-                    SubcommandData("refresh", "refresh home message"),
-                    SubcommandData("install", "ensure home message and verify pin status")
-                        .addOptions(
-                            OptionData(OptionType.CHANNEL, "channel", "target text channel (default: current channel)", false)
-                                .setChannelTypes(ChannelType.TEXT),
-                        ),
-                ),
         )
     }
 }

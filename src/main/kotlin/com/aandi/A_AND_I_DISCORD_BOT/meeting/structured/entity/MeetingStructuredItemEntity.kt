@@ -50,6 +50,12 @@ class MeetingStructuredItemEntity(
     @Column(name = "created_by", nullable = false)
     var createdBy: Long = 0,
 
+    @Column(name = "canceled_by")
+    var canceledBy: Long? = null,
+
+    @Column(name = "canceled_at")
+    var canceledAt: Instant? = null,
+
     @Column(name = "created_at", nullable = false)
     var createdAt: Instant = Instant.now(),
 

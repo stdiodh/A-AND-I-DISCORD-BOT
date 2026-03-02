@@ -1,6 +1,5 @@
 package com.aandi.A_AND_I_DISCORD_BOT.meeting.handler
 
-import com.aandi.A_AND_I_DISCORD_BOT.agenda.service.AgendaService
 import com.aandi.A_AND_I_DISCORD_BOT.common.auth.PermissionGate
 import com.aandi.A_AND_I_DISCORD_BOT.common.config.FeatureFlagsProperties
 import com.aandi.A_AND_I_DISCORD_BOT.common.discord.DiscordReplyFactory
@@ -8,7 +7,6 @@ import com.aandi.A_AND_I_DISCORD_BOT.common.discord.InteractionReliabilityGuard
 import com.aandi.A_AND_I_DISCORD_BOT.meeting.service.MeetingService
 import com.aandi.A_AND_I_DISCORD_BOT.meeting.summary.service.MeetingSummaryArtifactService
 import com.aandi.A_AND_I_DISCORD_BOT.meeting.ui.MeetingSummaryActionIds
-import net.dv8tion.jda.api.Permission
 import net.dv8tion.jda.api.components.actionrow.ActionRow
 import net.dv8tion.jda.api.components.buttons.Button
 import net.dv8tion.jda.api.components.label.Label
@@ -30,7 +28,6 @@ import java.util.concurrent.CompletableFuture
 @ConditionalOnProperty(name = ["discord.enabled"], havingValue = "true", matchIfMissing = true)
 class MeetingSlashCommandHandler(
     private val meetingService: MeetingService,
-    private val agendaService: AgendaService,
     private val permissionGate: PermissionGate,
     private val featureFlags: FeatureFlagsProperties,
     private val discordReplyFactory: DiscordReplyFactory,
@@ -49,6 +46,10 @@ class MeetingSlashCommandHandler(
             captureAction(event)
             return
         }
+        if (event.name == COMMAND_TODO_KO) {
+            captureTodo(event)
+            return
+        }
         if (event.name != COMMAND_NAME_KO && event.name != COMMAND_NAME_EN) {
             return
         }
@@ -60,12 +61,20 @@ class MeetingSlashCommandHandler(
             endMeeting(event)
             return
         }
+        if (event.subcommandName == SUBCOMMAND_ITEM_LIST_KO) {
+            listMeetingItems(event)
+            return
+        }
+        if (event.subcommandName == SUBCOMMAND_ITEM_CANCEL_KO) {
+            cancelMeetingItem(event)
+            return
+        }
         if (event.subcommandName == SUBCOMMAND_AGENDA_SET_KO || event.subcommandName == SUBCOMMAND_AGENDA_SET_EN) {
-            setMeetingAgenda(event)
+            replyAgendaCommandMigrationForSet(event)
             return
         }
         if (event.subcommandName == SUBCOMMAND_AGENDA_GET_KO || event.subcommandName == SUBCOMMAND_AGENDA_GET_EN) {
-            getMeetingAgenda(event)
+            replyAgendaCommandMigrationForGet(event)
             return
         }
         discordReplyFactory.invalidInput(event, "지원하지 않는 하위 명령입니다.")
@@ -185,13 +194,65 @@ class MeetingSlashCommandHandler(
         )
     }
 
+    private fun captureTodo(event: SlashCommandInteractionEvent) {
+        val guild = event.guild
+        val member = event.member
+        if (guild == null || member == null) {
+            discordReplyFactory.invalidInput(event, "길드에서만 사용할 수 있습니다.")
+            return
+        }
+        if (!featureFlags.meetingSummaryV2) {
+            discordReplyFactory.invalidInput(event, "`FEATURE_MEETING_SUMMARY_V2=true`에서 사용할 수 있는 기능입니다.")
+            return
+        }
+        val content = event.getOption(OPTION_CONTENT_KO)?.asString?.trim().orEmpty()
+        if (content.isBlank()) {
+            discordReplyFactory.invalidInput(event, "내용 옵션은 필수입니다.")
+            return
+        }
+        val fallbackThreadId = event.channel.takeIf { event.channelType.isThread }?.idLong
+        interactionReliabilityGuard.safeDefer(
+            interaction = event,
+            preferUpdate = false,
+            onDeferred = { ctx ->
+                CompletableFuture.runAsync {
+                    runCatching {
+                        meetingService.captureTodo(
+                            guildId = guild.idLong,
+                            requestedBy = member.idLong,
+                            fallbackThreadId = fallbackThreadId,
+                            content = content,
+                        )
+                    }.fold(
+                        onSuccess = { result ->
+                            replyCaptureResult(ctx, result)
+                        },
+                        onFailure = { exception ->
+                            log.error("투두 기록 실패: guildId={}, userId={}", guild.idLong, member.idLong, exception)
+                            interactionReliabilityGuard.safeFailureReply(
+                                ctx = ctx,
+                                alternativeCommandGuide = "`/투두` 명령을 다시 시도해 주세요.",
+                            )
+                        },
+                    )
+                }
+            },
+            onFailure = { ctx, _ ->
+                interactionReliabilityGuard.safeFailureReply(
+                    ctx = ctx,
+                    alternativeCommandGuide = "`/투두` 명령을 다시 시도해 주세요.",
+                )
+            },
+        )
+    }
+
     private fun replyCaptureResult(
         ctx: InteractionReliabilityGuard.InteractionCtx,
         result: MeetingService.StructuredCaptureResult,
     ) {
         when (result) {
             is MeetingService.StructuredCaptureResult.Success -> {
-                val typeLabel = if (result.type == MeetingService.StructuredCaptureType.DECISION) "결정" else "액션"
+                val typeLabel = resolveCaptureTypeLabel(result.type)
                 interactionReliabilityGuard.safeEditReply(
                     ctx,
                     "$typeLabel 기록 완료\n" +
@@ -211,6 +272,179 @@ class MeetingSlashCommandHandler(
             is MeetingService.StructuredCaptureResult.ThreadNotFound -> {
                 interactionReliabilityGuard.safeEditReply(ctx, "회의 스레드를 찾지 못했습니다. (threadId=${result.threadId})")
             }
+        }
+    }
+
+    private fun listMeetingItems(event: SlashCommandInteractionEvent) {
+        val guild = event.guild
+        val member = event.member
+        if (guild == null || member == null) {
+            discordReplyFactory.invalidInput(event, "길드에서만 사용할 수 있습니다.")
+            return
+        }
+        if (!featureFlags.meetingSummaryV2) {
+            discordReplyFactory.invalidInput(event, "`FEATURE_MEETING_SUMMARY_V2=true`에서 사용할 수 있는 기능입니다.")
+            return
+        }
+        val fallbackThreadId = event.channel.takeIf { event.channelType.isThread }?.idLong
+        interactionReliabilityGuard.safeDefer(
+            interaction = event,
+            preferUpdate = false,
+            onDeferred = { ctx ->
+                CompletableFuture.runAsync {
+                    runCatching {
+                        meetingService.listStructuredItems(
+                            guildId = guild.idLong,
+                            fallbackThreadId = fallbackThreadId,
+                        )
+                    }.fold(
+                        onSuccess = { result ->
+                            replyListItemsResult(ctx, result)
+                        },
+                        onFailure = { exception ->
+                            log.error("회의 항목 조회 실패: guildId={}, userId={}", guild.idLong, member.idLong, exception)
+                            interactionReliabilityGuard.safeFailureReply(
+                                ctx = ctx,
+                                alternativeCommandGuide = "`/회의 항목조회` 명령을 다시 시도해 주세요.",
+                            )
+                        },
+                    )
+                }
+            },
+            onFailure = { ctx, _ ->
+                interactionReliabilityGuard.safeFailureReply(
+                    ctx = ctx,
+                    alternativeCommandGuide = "`/회의 항목조회` 명령을 다시 시도해 주세요.",
+                )
+            },
+        )
+    }
+
+    private fun cancelMeetingItem(event: SlashCommandInteractionEvent) {
+        val guild = event.guild
+        val member = event.member
+        if (guild == null || member == null) {
+            discordReplyFactory.invalidInput(event, "길드에서만 사용할 수 있습니다.")
+            return
+        }
+        if (!featureFlags.meetingSummaryV2) {
+            discordReplyFactory.invalidInput(event, "`FEATURE_MEETING_SUMMARY_V2=true`에서 사용할 수 있는 기능입니다.")
+            return
+        }
+        val itemId = event.getOption(OPTION_ITEM_ID_KO)?.asLong
+        if (itemId == null || itemId <= 0) {
+            discordReplyFactory.invalidInput(event, "취소할 항목 ID(아이디)를 입력해 주세요.")
+            return
+        }
+        val fallbackThreadId = event.channel.takeIf { event.channelType.isThread }?.idLong
+        interactionReliabilityGuard.safeDefer(
+            interaction = event,
+            preferUpdate = false,
+            onDeferred = { ctx ->
+                CompletableFuture.runAsync {
+                    runCatching {
+                        meetingService.cancelStructuredItem(
+                            guildId = guild.idLong,
+                            requestedBy = member.idLong,
+                            fallbackThreadId = fallbackThreadId,
+                            itemId = itemId,
+                        )
+                    }.fold(
+                        onSuccess = { result ->
+                            replyCancelItemResult(ctx, result)
+                        },
+                        onFailure = { exception ->
+                            log.error("회의 항목 취소 실패: guildId={}, userId={}, itemId={}", guild.idLong, member.idLong, itemId, exception)
+                            interactionReliabilityGuard.safeFailureReply(
+                                ctx = ctx,
+                                alternativeCommandGuide = "`/회의 항목취소 아이디:<ID>` 명령을 다시 시도해 주세요.",
+                            )
+                        },
+                    )
+                }
+            },
+            onFailure = { ctx, _ ->
+                interactionReliabilityGuard.safeFailureReply(
+                    ctx = ctx,
+                    alternativeCommandGuide = "`/회의 항목취소 아이디:<ID>` 명령을 다시 시도해 주세요.",
+                )
+            },
+        )
+    }
+
+    private fun replyListItemsResult(
+        ctx: InteractionReliabilityGuard.InteractionCtx,
+        result: MeetingService.StructuredListResult,
+    ) {
+        when (result) {
+            is MeetingService.StructuredListResult.Success -> {
+                if (result.items.isEmpty()) {
+                    interactionReliabilityGuard.safeEditReply(
+                        ctx,
+                        "회의 항목이 아직 없습니다.\n`/결정`, `/액션`, `/투두`로 먼저 기록해 주세요.",
+                    )
+                    return
+                }
+                val lines = result.items.map { item ->
+                    "[${item.id}] ${resolveCaptureTypeLabel(item.type)}: ${item.summary}"
+                }
+                interactionReliabilityGuard.safeEditReply(
+                    ctx,
+                    "회의 항목 목록 (세션 `${result.sessionId}` / 스레드 <#${result.threadId}>)\n${lines.joinToString("\n")}",
+                )
+            }
+
+            MeetingService.StructuredListResult.SessionNotFound -> {
+                interactionReliabilityGuard.safeEditReply(ctx, "진행 중인 회의를 찾지 못했습니다.")
+            }
+
+            MeetingService.StructuredListResult.MeetingNotActive -> {
+                interactionReliabilityGuard.safeEditReply(ctx, "현재 스레드의 회의는 이미 종료되었습니다.")
+            }
+
+            is MeetingService.StructuredListResult.ThreadNotFound -> {
+                interactionReliabilityGuard.safeEditReply(ctx, "회의 스레드를 찾지 못했습니다. (threadId=${result.threadId})")
+            }
+        }
+    }
+
+    private fun replyCancelItemResult(
+        ctx: InteractionReliabilityGuard.InteractionCtx,
+        result: MeetingService.StructuredCancelResult,
+    ) {
+        when (result) {
+            is MeetingService.StructuredCancelResult.Success -> {
+                interactionReliabilityGuard.safeEditReply(
+                    ctx,
+                    "회의 항목을 취소했습니다.\n" +
+                        "세션 `${result.sessionId}` / 스레드 <#${result.threadId}>\n" +
+                        "항목 `[${result.item.id}]` ${resolveCaptureTypeLabel(result.item.type)}: ${result.item.summary}",
+                )
+            }
+
+            MeetingService.StructuredCancelResult.SessionNotFound -> {
+                interactionReliabilityGuard.safeEditReply(ctx, "진행 중인 회의를 찾지 못했습니다.")
+            }
+
+            MeetingService.StructuredCancelResult.MeetingNotActive -> {
+                interactionReliabilityGuard.safeEditReply(ctx, "현재 스레드의 회의는 이미 종료되었습니다.")
+            }
+
+            MeetingService.StructuredCancelResult.ItemNotFound -> {
+                interactionReliabilityGuard.safeEditReply(ctx, "취소할 항목 ID를 찾지 못했습니다.")
+            }
+
+            is MeetingService.StructuredCancelResult.ThreadNotFound -> {
+                interactionReliabilityGuard.safeEditReply(ctx, "회의 스레드를 찾지 못했습니다. (threadId=${result.threadId})")
+            }
+        }
+    }
+
+    private fun resolveCaptureTypeLabel(type: MeetingService.StructuredCaptureType): String {
+        return when (type) {
+            MeetingService.StructuredCaptureType.DECISION -> "결정"
+            MeetingService.StructuredCaptureType.ACTION -> "액션"
+            MeetingService.StructuredCaptureType.TODO -> "투두"
         }
     }
 
@@ -513,66 +747,20 @@ class MeetingSlashCommandHandler(
         )
     }
 
-    private fun setMeetingAgenda(event: SlashCommandInteractionEvent) {
-        val guild = event.guild
-        val member = event.member
-        if (guild == null || member == null) {
-            discordReplyFactory.invalidInput(event, "길드에서만 사용할 수 있습니다.")
-            return
-        }
-
-        val url = event.getOption(OPTION_LINK_KO)?.asString ?: event.getOption(OPTION_LINK_EN)?.asString
-        if (url.isNullOrBlank()) {
-            discordReplyFactory.invalidInput(event, "링크 옵션은 필수입니다.")
-            return
-        }
-
-        val result = agendaService.setTodayAgenda(
-            guildId = guild.idLong,
-            requesterUserId = member.idLong,
-            requesterRoleIds = member.roles.map { it.idLong }.toSet(),
-            hasManageServerPermission = hasManageServerPermission(member),
-            rawUrl = url,
-            rawTitle = event.getOption(OPTION_TITLE_KO)?.asString ?: event.getOption(OPTION_TITLE_EN)?.asString,
+    private fun replyAgendaCommandMigrationForSet(event: SlashCommandInteractionEvent) {
+        event.reply(
+            "해당 기능은 `/안건 생성`으로 통합되었습니다.\n" +
+                "예) `/안건 생성 링크:<URL> 제목:<선택>`",
         )
-        when (result) {
-            is AgendaService.SetAgendaResult.Success -> {
-                val action = if (result.updated) "업데이트" else "등록"
-                event.reply("회의 안건 링크를 $action 했습니다.\n제목: ${result.title}")
-                    .addComponents(ActionRow.of(Button.link(result.url, "회의 안건 링크 열기")))
-                    .setEphemeral(true)
-                    .queue()
-            }
-
-            AgendaService.SetAgendaResult.Forbidden -> {
-                discordReplyFactory.accessDenied(event, "회의 안건 등록 권한이 없습니다.")
-            }
-
-            AgendaService.SetAgendaResult.InvalidUrl -> {
-                discordReplyFactory.invalidInput(event, "URL 형식이 올바르지 않습니다. http/https만 허용됩니다.")
-            }
-
-            AgendaService.SetAgendaResult.InvalidTitle -> {
-                discordReplyFactory.invalidInput(event, "제목은 255자 이하여야 합니다.")
-            }
-        }
+            .setEphemeral(true)
+            .queue()
     }
 
-    private fun getMeetingAgenda(event: SlashCommandInteractionEvent) {
-        val guild = event.guild
-        if (guild == null) {
-            discordReplyFactory.invalidInput(event, "길드에서만 사용할 수 있습니다.")
-            return
-        }
-
-        val agenda = agendaService.getTodayAgenda(guild.idLong)
-        if (agenda == null) {
-            discordReplyFactory.resourceNotFound(event, "오늘 회의 안건 링크가 아직 등록되지 않았습니다.")
-            return
-        }
-
-        event.reply("오늘 회의 안건: ${agenda.title}")
-            .addComponents(ActionRow.of(Button.link(agenda.url, "회의 안건 링크 열기")))
+    private fun replyAgendaCommandMigrationForGet(event: SlashCommandInteractionEvent) {
+        event.reply(
+            "해당 기능은 `/안건 오늘`로 통합되었습니다.\n" +
+                "조회는 `/안건 오늘` 명령을 사용해 주세요.",
+        )
             .setEphemeral(true)
             .queue()
     }
@@ -659,13 +847,6 @@ class MeetingSlashCommandHandler(
         }
     }
 
-    private fun hasManageServerPermission(member: net.dv8tion.jda.api.entities.Member): Boolean {
-        if (member.hasPermission(Permission.ADMINISTRATOR)) {
-            return true
-        }
-        return member.hasPermission(Permission.MANAGE_SERVER)
-    }
-
     private fun buildAgendaSummaryLine(title: String?, url: String?): String {
         if (title.isNullOrBlank() || url.isNullOrBlank()) {
             return "연결 안건 `없음`"
@@ -732,23 +913,23 @@ class MeetingSlashCommandHandler(
         private const val COMMAND_NAME_EN = "meeting"
         private const val COMMAND_DECISION_KO = "결정"
         private const val COMMAND_ACTION_KO = "액션"
+        private const val COMMAND_TODO_KO = "투두"
         private const val SUBCOMMAND_START_KO = "시작"
         private const val SUBCOMMAND_START_EN = "start"
         private const val SUBCOMMAND_END_KO = "종료"
         private const val SUBCOMMAND_END_EN = "end"
+        private const val SUBCOMMAND_ITEM_LIST_KO = "항목조회"
+        private const val SUBCOMMAND_ITEM_CANCEL_KO = "항목취소"
         private const val SUBCOMMAND_AGENDA_SET_KO = "안건등록"
         private const val SUBCOMMAND_AGENDA_SET_EN = "agenda-set"
         private const val SUBCOMMAND_AGENDA_GET_KO = "안건조회"
         private const val SUBCOMMAND_AGENDA_GET_EN = "agenda-get"
         private const val OPTION_CHANNEL_KO = "채널"
         private const val OPTION_THREAD_ID_KO = "스레드아이디"
-        private const val OPTION_LINK_KO = "링크"
-        private const val OPTION_LINK_EN = "url"
-        private const val OPTION_TITLE_KO = "제목"
-        private const val OPTION_TITLE_EN = "title"
         private const val OPTION_CONTENT_KO = "내용"
         private const val OPTION_ASSIGNEE_KO = "담당자"
         private const val OPTION_DUE_DATE_KO = "기한"
+        private const val OPTION_ITEM_ID_KO = "아이디"
         private const val MODAL_FIELD_CONTENT = "내용"
     }
 }

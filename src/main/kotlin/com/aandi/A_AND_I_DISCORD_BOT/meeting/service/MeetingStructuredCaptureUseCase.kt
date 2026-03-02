@@ -4,6 +4,7 @@ import com.aandi.A_AND_I_DISCORD_BOT.common.log.StructuredLog
 import com.aandi.A_AND_I_DISCORD_BOT.meeting.entity.MeetingSessionEntity
 import com.aandi.A_AND_I_DISCORD_BOT.meeting.entity.MeetingSessionStatus
 import com.aandi.A_AND_I_DISCORD_BOT.meeting.repository.MeetingSessionRepository
+import com.aandi.A_AND_I_DISCORD_BOT.meeting.structured.entity.MeetingStructuredItemType
 import com.aandi.A_AND_I_DISCORD_BOT.meeting.structured.service.MeetingStructuredItemService
 import org.slf4j.LoggerFactory
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
@@ -122,6 +123,133 @@ class MeetingStructuredCaptureUseCase(
             type = MeetingService.StructuredCaptureType.ACTION,
             summaryLine = summaryLine,
         )
+    }
+
+    fun captureTodo(
+        guildId: Long,
+        requestedBy: Long,
+        fallbackThreadId: Long?,
+        content: String,
+    ): MeetingService.StructuredCaptureResult {
+        val resolution = resolveActiveSession(guildId, fallbackThreadId)
+        if (resolution.threadExistsButNotActive) {
+            return MeetingService.StructuredCaptureResult.MeetingNotActive
+        }
+        val session = resolution.session ?: return MeetingService.StructuredCaptureResult.SessionNotFound
+        val sessionId = session.id ?: return MeetingService.StructuredCaptureResult.SessionNotFound
+        val thread = meetingThreadGateway.findThreadChannel(session.threadId)
+            ?: return MeetingService.StructuredCaptureResult.ThreadNotFound(session.threadId)
+
+        val saved = meetingStructuredItemService.addTodo(
+            meetingSessionId = sessionId,
+            guildId = session.guildId,
+            threadId = session.threadId,
+            content = content,
+            createdBy = requestedBy,
+        )
+        val itemId = saved.id ?: return MeetingService.StructuredCaptureResult.SessionNotFound
+        val summaryLine = saved.content.trim()
+        meetingThreadGateway.postStructuredCaptureNotice(thread, "✅ TODO 기록: $summaryLine")
+
+        log.info(
+            StructuredLog.event(
+                name = "meeting.capture.todo",
+                "guildId" to guildId,
+                "threadId" to session.threadId,
+                "sessionId" to session.id,
+                "itemId" to saved.id,
+                "requestedBy" to requestedBy,
+            ),
+        )
+
+        return MeetingService.StructuredCaptureResult.Success(
+            sessionId = sessionId,
+            threadId = session.threadId,
+            itemId = itemId,
+            type = MeetingService.StructuredCaptureType.TODO,
+            summaryLine = summaryLine,
+        )
+    }
+
+    fun listItems(
+        guildId: Long,
+        fallbackThreadId: Long?,
+    ): MeetingService.StructuredListResult {
+        val resolution = resolveActiveSession(guildId, fallbackThreadId)
+        if (resolution.threadExistsButNotActive) {
+            return MeetingService.StructuredListResult.MeetingNotActive
+        }
+        val session = resolution.session ?: return MeetingService.StructuredListResult.SessionNotFound
+        val sessionId = session.id ?: return MeetingService.StructuredListResult.SessionNotFound
+        val thread = meetingThreadGateway.findThreadChannel(session.threadId)
+            ?: return MeetingService.StructuredListResult.ThreadNotFound(session.threadId)
+
+        val items = meetingStructuredItemService.listActiveItems(sessionId)
+            .map { item ->
+                MeetingService.StructuredItemView(
+                    id = item.id,
+                    type = toCaptureType(item.type),
+                    summary = item.summary,
+                )
+            }
+        return MeetingService.StructuredListResult.Success(
+            sessionId = sessionId,
+            threadId = thread.idLong,
+            items = items,
+        )
+    }
+
+    fun cancelItem(
+        guildId: Long,
+        requestedBy: Long,
+        fallbackThreadId: Long?,
+        itemId: Long,
+    ): MeetingService.StructuredCancelResult {
+        val resolution = resolveActiveSession(guildId, fallbackThreadId)
+        if (resolution.threadExistsButNotActive) {
+            return MeetingService.StructuredCancelResult.MeetingNotActive
+        }
+        val session = resolution.session ?: return MeetingService.StructuredCancelResult.SessionNotFound
+        val sessionId = session.id ?: return MeetingService.StructuredCancelResult.SessionNotFound
+        val thread = meetingThreadGateway.findThreadChannel(session.threadId)
+            ?: return MeetingService.StructuredCancelResult.ThreadNotFound(session.threadId)
+        val canceled = meetingStructuredItemService.cancelItem(
+            meetingSessionId = sessionId,
+            itemId = itemId,
+            canceledBy = requestedBy,
+        ) ?: return MeetingService.StructuredCancelResult.ItemNotFound
+
+        val summaryLine = when (canceled.itemType) {
+            MeetingStructuredItemType.DECISION,
+            MeetingStructuredItemType.TODO,
+            -> canceled.content.trim()
+
+            MeetingStructuredItemType.ACTION ->
+                meetingStructuredItemService.formatActionLine(
+                    content = canceled.content,
+                    assigneeUserId = canceled.assigneeUserId,
+                    dueDateLocal = canceled.dueDateLocal,
+                )
+        }
+        meetingThreadGateway.postStructuredCaptureNotice(thread, "🗑️ 항목 취소: #$itemId")
+        val item = MeetingService.StructuredItemView(
+            id = canceled.id ?: itemId,
+            type = toCaptureType(canceled.itemType),
+            summary = summaryLine,
+        )
+        return MeetingService.StructuredCancelResult.Success(
+            sessionId = sessionId,
+            threadId = thread.idLong,
+            item = item,
+        )
+    }
+
+    private fun toCaptureType(type: MeetingStructuredItemType): MeetingService.StructuredCaptureType {
+        return when (type) {
+            MeetingStructuredItemType.DECISION -> MeetingService.StructuredCaptureType.DECISION
+            MeetingStructuredItemType.ACTION -> MeetingService.StructuredCaptureType.ACTION
+            MeetingStructuredItemType.TODO -> MeetingService.StructuredCaptureType.TODO
+        }
     }
 
     private fun resolveActiveSession(guildId: Long, fallbackThreadId: Long?): SessionResolution {

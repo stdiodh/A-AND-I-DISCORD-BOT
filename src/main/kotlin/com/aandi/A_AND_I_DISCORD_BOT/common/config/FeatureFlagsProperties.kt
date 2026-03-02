@@ -7,7 +7,6 @@ import org.springframework.stereotype.Component
 @ConfigurationProperties(prefix = "feature")
 class FeatureFlagsProperties {
     var homeV2: Boolean = false
-    var meetingSummaryV2: Boolean = false
+    var meetingSummaryV2: Boolean = true
     var taskQuickregisterV2: Boolean = false
 }
-

@@ -23,10 +23,9 @@ class MeetingCommandSpec : DiscordCommandSpec {
                                 .setChannelTypes(ChannelType.TEXT),
                         ),
                     SubcommandData("종료", "최근 회의를 종료하고 스레드를 아카이브합니다."),
-                    SubcommandData("안건등록", "오늘 회의 안건 링크를 등록/수정합니다.")
-                        .addOption(OptionType.STRING, "링크", "http/https 링크", true)
-                        .addOption(OptionType.STRING, "제목", "안건 제목(선택)", false),
-                    SubcommandData("안건조회", "오늘 회의 안건 링크를 조회합니다."),
+                    SubcommandData("항목조회", "회의 중 기록한 결정/액션/TODO 항목을 조회합니다."),
+                    SubcommandData("항목취소", "회의 중 기록한 항목을 ID로 취소합니다.")
+                        .addOption(OptionType.INTEGER, "아이디", "취소할 항목 ID", true),
                 ),
             Commands.slash("결정", "진행 중 회의에 결정을 기록합니다.")
                 .addOption(OptionType.STRING, "내용", "결정 내용", true),
@@ -34,6 +33,8 @@ class MeetingCommandSpec : DiscordCommandSpec {
                 .addOption(OptionType.STRING, "내용", "액션 내용", true)
                 .addOption(OptionType.USER, "담당자", "담당자(선택)", false)
                 .addOption(OptionType.STRING, "기한", "기한(YYYY-MM-DD, 선택)", false),
+            Commands.slash("투두", "진행 중 회의에 TODO를 기록합니다.")
+                .addOption(OptionType.STRING, "내용", "TODO 내용", true),
         )
     }
 }

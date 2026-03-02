@@ -65,7 +65,7 @@
 ### 기능 플래그
 - `FEATURE_HOME_V2` (default: false)
   - 홈 대시보드 V2 UI(2개 주요 버튼 + 더보기 셀렉트) 활성화
-- `FEATURE_MEETING_SUMMARY_V2` (default: false)
+- `FEATURE_MEETING_SUMMARY_V2` (default: true)
   - 회의 요약 파이프라인 V2(수집 윈도우, 요약 산출물 저장, 재생성/수동보강 UI) 활성화
 - `FEATURE_TASK_QUICKREGISTER_V2` (default: false)
   - 과제 빠른등록 V2(모달+2단계 선택) 활성화
@@ -138,14 +138,16 @@
 |--------|-----|----------|---------|----------|------|
 | SLASH | `/회의 시작` | 회의 시작 메시지 생성 후 스레드 생성 | **Options:**<br>- `채널` (TextChannel, required) | 지정 채널에 회의 시작 임베드 게시 후 `YYYY-MM-DD 회의` 스레드 생성 | ADMIN_ROLE 또는 (admin_role_id 미설정 시) Manage Server/Administrator |
 | SLASH | `/회의 종료` | 회의 요약 생성 후 세션 종료/스레드 아카이브 | 없음 | 결정/액션아이템/핵심문장 요약 임베드 게시 후 종료 임베드/아카이브 처리 | ADMIN_ROLE 또는 (admin_role_id 미설정 시) Manage Server/Administrator |
-| SLASH | `/회의 안건등록` | 오늘 회의 안건 링크 등록/수정 | **Options:**<br>- `링크` (String, required): http/https 링크<br>- `제목` (String, optional) | 등록 성공 메시지 + 링크 버튼 | ADMIN_ROLE |
-| SLASH | `/회의 안건조회` | 오늘 회의 안건 링크 조회 | 없음 | 등록된 링크 안내 + 링크 버튼 (없으면 미등록 안내) | ANY |
 | SLASH | `/결정` | 진행 중 회의에 결정 항목을 구조화 기록 | **Options:**<br>- `내용` (String, required) | 회의 세션/스레드/항목ID와 함께 저장 완료 메시지 | ADMIN_ROLE 또는 (admin_role_id 미설정 시) Manage Server/Administrator |
 | SLASH | `/액션` | 진행 중 회의에 액션 항목을 구조화 기록 | **Options:**<br>- `내용` (String, required)<br>- `담당자` (User, optional)<br>- `기한` (String, optional, YYYY-MM-DD) | 회의 세션/스레드/항목ID와 함께 저장 완료 메시지 | ADMIN_ROLE 또는 (admin_role_id 미설정 시) Manage Server/Administrator |
+| SLASH | `/투두` | 진행 중 회의에 TODO 항목을 구조화 기록 | **Options:**<br>- `내용` (String, required) | 회의 세션/스레드/항목ID와 함께 저장 완료 메시지 | ADMIN_ROLE 또는 (admin_role_id 미설정 시) Manage Server/Administrator |
+| SLASH | `/회의 항목조회` | 진행 중 회의의 구조화 항목 목록 조회 | 없음 | 항목 ID 포함 목록(결정/액션/투두) | ADMIN_ROLE 또는 (admin_role_id 미설정 시) Manage Server/Administrator |
+| SLASH | `/회의 항목취소` | 구조화 항목을 ID 기준 취소(소프트 삭제) | **Options:**<br>- `아이디` (Integer, required) | 취소 완료 메시지 + 대상 항목 요약 | ADMIN_ROLE 또는 (admin_role_id 미설정 시) Manage Server/Administrator |
 
 ### 회의 시작 처리 규칙
 - `/회의 시작`은 지정 채널에 "회의 시작" 임베드를 먼저 게시하고, 그 메시지에서 스레드를 생성한다.
 - 회의 세션 생성 시점에 오늘 안건이 존재하면 `meeting_sessions.agenda_link_id`로 연결 저장한다.
+- 안건 등록/조회는 `/안건 생성`, `/안건 오늘` 명령으로 일원화한다.
 - 대시보드 버튼 `dash:meeting_start`는 동일한 회의 시작 로직을 호출한다.
 - `dash:meeting_start` 경로는 대시보드 채널(설정 시) 또는 현재 채널을 사용한다.
 - 오늘 안건이 있으면 스레드 첫 메시지에 링크 버튼(`오늘 안건 링크`)을 포함한다.
@@ -156,7 +158,7 @@
 - V2 활성 시:
   - 수집 범위: `meetingStart ~ meetingEnd + buffer(기본 3초)` 윈도우
   - 메시지 수집은 배치/페이지 기반으로 수행하고, 결과 메시지 수(`messageCount`)를 기록한다.
-  - 구조화 항목(`/결정`, `/액션`)과 추출 항목을 정규화 후 병합/중복제거한다.
+  - 구조화 항목(`/결정`, `/액션`, `/투두`)과 추출 항목을 정규화 후 병합/중복제거한다.
   - 요약 임베드에 통계(`결정/액션/TODO/참여자`) 및 원문 수집 범위를 포함한다.
   - 요약 액션 버튼:
     - `요약 재생성`
@@ -174,8 +176,8 @@
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| SLASH | `/모각코 채널 등록` | 모각코로 집계할 음성채널을 등록 | **Options:**<br>- `음성채널` (VoiceChannel, required) | 등록 완료 메시지 (이미 등록된 경우 안내 후 종료) | ADMIN_ROLE |
-| SLASH | `/모각코 채널 해제` | 모각코 집계 대상 음성채널 제거 | **Options:**<br>- `음성채널` (VoiceChannel, required) | 제거 완료 메시지 | ADMIN_ROLE |
+| SLASH | `/모각코 채널 등록` | 모각코로 집계할 음성채널을 등록 | **Options:**<br>- `채널` (VoiceChannel, required) | 등록 완료 메시지 (이미 등록된 경우 안내 후 종료) | ADMIN_ROLE |
+| SLASH | `/모각코 채널 해제` | 모각코 집계 대상 음성채널 제거 | **Options:**<br>- `채널` (VoiceChannel, required) | 제거 완료 메시지 | ADMIN_ROLE |
 | SLASH | `/모각코 채널 목록` | 현재 등록된 모각코 채널 목록 조회 | 없음 | 채널 목록 출력 | ADMIN_ROLE |
 
 ---
@@ -207,16 +209,17 @@
 - `remind_at`은 과거 시각을 허용하지 않는다. (`remind_at <= nowUtc` 입력은 거부)
 - `due_at`은 현재 시각보다 미래여야 하며, `remind_at`보다 같거나 늦어야 한다.
 - 과제 확인 링크(`verify_url`)는 `http/https`만 허용한다.
-- 임박 알림 시간(`임박알림`)은 쉼표 구분 정수(`24,3,1`) 형식으로 입력한다. 비우면 기본값 `24,3,1`을 사용한다.
-- 종료 메시지(`종료메시지`)는 500자 이하여야 한다.
+- 임박 알림 시간은 `임박알림옵션`(프리셋) 또는 `임박알림`(직접입력)으로 설정한다.
+- `임박알림` 직접입력은 쉼표 구분 정수(`24,3,1`) 형식이다. 비우면 기본값 `24,3,1`을 사용한다.
+- 마감 메시지(`마감메시지`)는 500자 이하여야 한다.
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| SLASH | `/과제 등록` | 과제 등록 | **Options:**<br>- `제목` (String, required)<br>- `링크` (String, required, http/https)<br>- `알림시각` (String, required, KST)<br>- `마감시각` (String, required, KST)<br>- `채널` (TextChannel, optional)<br>- `알림역할` (Role, optional)<br>- `임박알림` (String, optional, 예: 24,3,1)<br>- `종료메시지` (String, optional) | 등록 결과(과제ID/알림·마감시각/역할) 출력 | ADMIN_ROLE |
+| SLASH | `/과제 등록` | 과제 등록 | **Options:**<br>- `제목` (String, required)<br>- `링크` (String, required, http/https)<br>- `알림` (String, required, KST)<br>- `마감` (String, required, KST)<br>- `채널` (TextChannel, optional)<br>- `역할` (Role, optional)<br>- `임박알림옵션` (String, optional: 프리셋 선택)<br>- `임박알림` (String, optional, 예: 24,3,1)<br>- `마감메시지` (String, optional) | 등록 결과(과제ID/알림·마감/역할) 출력 | ADMIN_ROLE |
 | SLASH | `/과제 목록` | 과제 목록 조회 | **Options:**<br>- `상태` (optional: `대기/완료/종료` 또는 `PENDING/DONE/CLOSED`) | 과제 목록 출력 | ANY |
-| SLASH | `/과제 상세` | 과제 상세 조회 | **Options:**<br>- `과제아이디` (Long, required) | 과제 상세 출력(ephemeral 권장) | ANY |
-| SLASH | `/과제 완료` | 과제 완료 처리 | **Options:**<br>- `과제아이디` (Long, required) | 완료 처리 결과 출력 | ADMIN_ROLE |
-| SLASH | `/과제 삭제` | 과제 삭제(또는 취소) 처리 | **Options:**<br>- `과제아이디` (Long, required) | 삭제 처리 결과 출력 | ADMIN_ROLE |
+| SLASH | `/과제 상세` | 과제 상세 조회 | **Options:**<br>- `아이디` (Long, required) | 과제 상세 출력(ephemeral 권장) | ANY |
+| SLASH | `/과제 완료` | 과제 완료 처리 | **Options:**<br>- `아이디` (Long, required) | 완료 처리 결과 출력 | ADMIN_ROLE |
+| SLASH | `/과제 삭제` | 과제 삭제(또는 취소) 처리 | **Options:**<br>- `아이디` (Long, required) | 삭제 처리 결과 출력 | ADMIN_ROLE |
 
 ### 과제 목록 노출 정책
 - `/과제 삭제`는 물리 삭제가 아닌 `CANCELED` 상태 전환이다.
@@ -248,9 +251,9 @@
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| SLASH | `/회의음성 시작` | 회의 음성요약 시작 요청 (Skeleton) | **Options:**<br>- `회의아이디` (Long, required: 회의 세션 ID 또는 스레드 ID)<br>- `보이스채널` (Voice/Stage, required) | enabled=false 기본값에서는 비활성 안내(ephemeral). enabled=true일 때만 job 생성/상태전이 수행 | ADMIN_ROLE |
-| SLASH | `/회의음성 종료` | 회의 음성요약 종료 요청 (Skeleton) | **Options:**<br>- `회의아이디` (Long, required: 회의 세션 ID 또는 스레드 ID) | enabled=false 기본값에서는 비활성 안내(ephemeral). enabled=true일 때만 상태전이 수행 | ADMIN_ROLE |
-| SLASH | `/회의음성 상태` | 회의 음성요약 설정/상태 조회 | **Options:**<br>- `회의아이디` (Long, required: 회의 세션 ID 또는 스레드 ID) | enabled=false 기본값에서는 비활성 안내(ephemeral). enabled=true일 때만 job 상태 조회 | ADMIN_ROLE |
+| SLASH | `/회의음성 시작` | 회의 음성요약 시작 요청 (Skeleton) | **Options:**<br>- `아이디` (Long, required: 회의 세션 ID 또는 스레드 ID)<br>- `채널` (Voice/Stage, required) | enabled=false 기본값에서는 비활성 안내(ephemeral). enabled=true일 때만 job 생성/상태전이 수행 | ADMIN_ROLE |
+| SLASH | `/회의음성 종료` | 회의 음성요약 종료 요청 (Skeleton) | **Options:**<br>- `아이디` (Long, required: 회의 세션 ID 또는 스레드 ID) | enabled=false 기본값에서는 비활성 안내(ephemeral). enabled=true일 때만 상태전이 수행 | ADMIN_ROLE |
+| SLASH | `/회의음성 상태` | 회의 음성요약 설정/상태 조회 | **Options:**<br>- `아이디` (Long, required: 회의 세션 ID 또는 스레드 ID) | enabled=false 기본값에서는 비활성 안내(ephemeral). enabled=true일 때만 job 상태 조회 | ADMIN_ROLE |
 
 ### 비활성 정책(고정)
 - `VOICE_SUMMARY_ENABLED=false`이면 실제 음성 연결을 수행하지 않는다.
@@ -270,7 +273,7 @@
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| SLASH | `/설정 운영진역할` | 운영진 역할 ID를 길드 설정에 저장 | **Options:**<br>- `대상역할` (Role, required) | 설정 완료 메시지 (ephemeral) | ADMIN_ROLE 또는 Manage Server/Administrator |
+| SLASH | `/설정 운영진역할` | 운영진 역할 ID를 길드 설정에 저장 | **Options:**<br>- `역할` (Role, required) | 설정 완료 메시지 (ephemeral) | ADMIN_ROLE 또는 Manage Server/Administrator |
 | SLASH | `/설정 운영진해제` | 운영진 역할 설정을 해제(`admin_role_id = null`) | 없음 | 해제 완료 메시지 (ephemeral) | ADMIN_ROLE 또는 Manage Server/Administrator |
 | SLASH | `/설정 운영진조회` | 현재 운영진 역할 설정 조회 | 없음 | 현재 운영진 역할 정보 출력. 미설정 시 설정 가이드 안내(권장: ephemeral) | ANY |
 
