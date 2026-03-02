@@ -2,6 +2,7 @@ package com.aandi.A_AND_I_DISCORD_BOT.dashboard.handler
 
 import com.aandi.A_AND_I_DISCORD_BOT.common.auth.PermissionGate
 import com.aandi.A_AND_I_DISCORD_BOT.common.discord.DiscordReplyFactory
+import com.aandi.A_AND_I_DISCORD_BOT.common.discord.InteractionReliabilityGuard
 import com.aandi.A_AND_I_DISCORD_BOT.dashboard.service.HomeDashboardService
 import com.aandi.A_AND_I_DISCORD_BOT.dashboard.ui.DashboardActionIds
 import net.dv8tion.jda.api.Permission
@@ -12,6 +13,7 @@ import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEve
 import net.dv8tion.jda.api.hooks.ListenerAdapter
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Component
+import java.util.concurrent.CompletableFuture
 
 @Component
 @ConditionalOnProperty(name = ["discord.enabled"], havingValue = "true", matchIfMissing = true)
@@ -19,6 +21,7 @@ class HomeSlashCommandHandler(
     private val homeDashboardService: HomeDashboardService,
     private val permissionGate: PermissionGate,
     private val discordReplyFactory: DiscordReplyFactory,
+    private val interactionReliabilityGuard: InteractionReliabilityGuard,
 ) : ListenerAdapter() {
 
     override fun onSlashCommandInteraction(event: SlashCommandInteractionEvent) {
@@ -51,30 +54,31 @@ class HomeSlashCommandHandler(
             return
         }
 
-        when (val result = homeDashboardService.create(guild.idLong, guild.name, channel.idLong)) {
-            is HomeDashboardService.Result.Success -> {
-                val actionMessage = if (result.createdNew) {
-                    "홈 메시지를 생성했습니다."
-                } else {
-                    "기존 홈 메시지를 갱신했습니다."
+        interactionReliabilityGuard.safeDefer(
+            interaction = event,
+            preferUpdate = false,
+            onDeferred = { ctx ->
+                CompletableFuture.runAsync {
+                    runCatching {
+                        homeDashboardService.create(guild.idLong, guild.name, channel.idLong)
+                    }.fold(
+                        onSuccess = { result -> replyCreateResult(ctx, result) },
+                        onFailure = {
+                            interactionReliabilityGuard.safeFailureReply(
+                                ctx = ctx,
+                                alternativeCommandGuide = "`/홈 생성` 또는 `/홈 설치`를 다시 시도해 주세요.",
+                            )
+                        },
+                    )
                 }
-                event.reply("$actionMessage <#${result.channelId}> / 메시지 ID: `${result.messageId}`\n${buildPinNote(result.pinResult)}")
-                    .setEphemeral(true)
-                    .queue()
-            }
-
-            HomeDashboardService.Result.ChannelNotFound -> {
-                discordReplyFactory.invalidInput(event, "대상 채널을 찾을 수 없습니다.")
-            }
-
-            HomeDashboardService.Result.MessageNotFound -> {
-                discordReplyFactory.invalidInput(event, "홈 메시지 생성에 실패했습니다.")
-            }
-
-            HomeDashboardService.Result.NotConfigured -> {
-                discordReplyFactory.invalidInput(event, "홈 메시지 생성에 실패했습니다.")
-            }
-        }
+            },
+            onFailure = { ctx, _ ->
+                interactionReliabilityGuard.safeFailureReply(
+                    ctx = ctx,
+                    alternativeCommandGuide = "`/홈 생성` 또는 `/홈 설치`를 다시 시도해 주세요.",
+                )
+            },
+        )
     }
 
     private fun handleRefresh(event: SlashCommandInteractionEvent) {
@@ -89,25 +93,31 @@ class HomeSlashCommandHandler(
             return
         }
 
-        when (val result = homeDashboardService.refresh(guild.idLong, guild.name)) {
-            is HomeDashboardService.Result.Success -> {
-                event.reply("홈 메시지를 갱신했습니다.\n${buildPinNote(result.pinResult)}")
-                    .setEphemeral(true)
-                    .queue()
-            }
-
-            HomeDashboardService.Result.NotConfigured -> {
-                discordReplyFactory.invalidInput(event, "먼저 `/홈 설치`를 실행해 홈 메시지를 만들어 주세요.")
-            }
-
-            HomeDashboardService.Result.ChannelNotFound -> {
-                discordReplyFactory.invalidInput(event, "저장된 홈 채널을 찾을 수 없습니다. `/홈 설치`로 다시 생성해 주세요.")
-            }
-
-            HomeDashboardService.Result.MessageNotFound -> {
-                discordReplyFactory.invalidInput(event, "저장된 홈 메시지를 찾을 수 없습니다. `/홈 설치`로 다시 생성해 주세요.")
-            }
-        }
+        interactionReliabilityGuard.safeDefer(
+            interaction = event,
+            preferUpdate = false,
+            onDeferred = { ctx ->
+                CompletableFuture.runAsync {
+                    runCatching {
+                        homeDashboardService.refresh(guild.idLong, guild.name)
+                    }.fold(
+                        onSuccess = { result -> replyRefreshResult(ctx, result) },
+                        onFailure = {
+                            interactionReliabilityGuard.safeFailureReply(
+                                ctx = ctx,
+                                alternativeCommandGuide = "`/홈 갱신` 또는 `/홈 설치`를 다시 시도해 주세요.",
+                            )
+                        },
+                    )
+                }
+            },
+            onFailure = { ctx, _ ->
+                interactionReliabilityGuard.safeFailureReply(
+                    ctx = ctx,
+                    alternativeCommandGuide = "`/홈 갱신` 또는 `/홈 설치`를 다시 시도해 주세요.",
+                )
+            },
+        )
     }
 
     private fun handleInstall(event: SlashCommandInteractionEvent) {
@@ -133,35 +143,31 @@ class HomeSlashCommandHandler(
             else -> null
         }
 
-        when (val result = homeDashboardService.install(guild.idLong, guild.name, preferredChannelId)) {
-            is HomeDashboardService.Result.Success -> {
-                val actionMessage = if (result.createdNew) {
-                    "홈 메시지를 생성했습니다."
-                } else {
-                    "기존 홈 메시지를 재사용/복구했습니다."
+        interactionReliabilityGuard.safeDefer(
+            interaction = event,
+            preferUpdate = false,
+            onDeferred = { ctx ->
+                CompletableFuture.runAsync {
+                    runCatching {
+                        homeDashboardService.install(guild.idLong, guild.name, preferredChannelId)
+                    }.fold(
+                        onSuccess = { result -> replyInstallResult(ctx, result) },
+                        onFailure = {
+                            interactionReliabilityGuard.safeFailureReply(
+                                ctx = ctx,
+                                alternativeCommandGuide = "`/홈 설치`를 다시 시도해 주세요.",
+                            )
+                        },
+                    )
                 }
-                val body = buildString {
-                    appendLine("$actionMessage <#${result.channelId}> / 메시지 ID: `${result.messageId}`")
-                    append(result.pinStatusLine)
-                }
-                event.reply(body)
-                    .addComponents(ActionRow.of(Button.secondary(DashboardActionIds.HOME_PIN_RECHECK, "고정 상태 재확인")))
-                    .setEphemeral(true)
-                    .queue()
-            }
-
-            HomeDashboardService.Result.NotConfigured -> {
-                discordReplyFactory.invalidInput(event, "설치할 채널을 찾지 못했습니다. `/홈 설치 채널:#채널명`으로 실행해 주세요.")
-            }
-
-            HomeDashboardService.Result.ChannelNotFound -> {
-                discordReplyFactory.invalidInput(event, "대상 홈 채널을 찾지 못했습니다. 채널을 다시 지정해 주세요.")
-            }
-
-            HomeDashboardService.Result.MessageNotFound -> {
-                discordReplyFactory.internalError(event, "홈 메시지 복구/생성 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.")
-            }
-        }
+            },
+            onFailure = { ctx, _ ->
+                interactionReliabilityGuard.safeFailureReply(
+                    ctx = ctx,
+                    alternativeCommandGuide = "`/홈 설치`를 다시 시도해 주세요.",
+                )
+            },
+        )
     }
 
     private fun canInstall(member: net.dv8tion.jda.api.entities.Member, guildId: Long): Boolean {
@@ -173,6 +179,91 @@ class HomeSlashCommandHandler(
 
     private fun resolveChannelOption(event: SlashCommandInteractionEvent) =
         event.getOption(OPTION_CHANNEL_KO)?.asChannel ?: event.getOption(OPTION_CHANNEL_EN)?.asChannel
+
+    private fun replyCreateResult(
+        ctx: InteractionReliabilityGuard.InteractionCtx,
+        result: HomeDashboardService.Result,
+    ) {
+        val message = when (result) {
+            is HomeDashboardService.Result.Success -> {
+                val actionMessage = resolveCreateActionMessage(result)
+                "$actionMessage <#${result.channelId}> / 메시지 ID: `${result.messageId}`\n${buildPinNote(result.pinResult)}"
+            }
+
+            HomeDashboardService.Result.ChannelNotFound -> "대상 채널을 찾을 수 없습니다."
+            HomeDashboardService.Result.MessageNotFound -> "홈 메시지 생성에 실패했습니다."
+            HomeDashboardService.Result.NotConfigured -> "홈 메시지 생성에 실패했습니다."
+        }
+        interactionReliabilityGuard.safeEditReply(ctx, message)
+    }
+
+    private fun replyRefreshResult(
+        ctx: InteractionReliabilityGuard.InteractionCtx,
+        result: HomeDashboardService.Result,
+    ) {
+        val message = when (result) {
+            is HomeDashboardService.Result.Success ->
+                "홈 메시지를 갱신했습니다.\n${buildPinNote(result.pinResult)}"
+
+            HomeDashboardService.Result.NotConfigured ->
+                "먼저 `/홈 설치`를 실행해 홈 메시지를 만들어 주세요."
+
+            HomeDashboardService.Result.ChannelNotFound ->
+                "저장된 홈 채널을 찾을 수 없습니다. `/홈 설치`로 다시 생성해 주세요."
+
+            HomeDashboardService.Result.MessageNotFound ->
+                "저장된 홈 메시지를 찾을 수 없습니다. `/홈 설치`로 다시 생성해 주세요."
+        }
+        interactionReliabilityGuard.safeEditReply(ctx, message)
+    }
+
+    private fun replyInstallResult(
+        ctx: InteractionReliabilityGuard.InteractionCtx,
+        result: HomeDashboardService.Result,
+    ) {
+        val message = when (result) {
+            is HomeDashboardService.Result.Success -> buildString {
+                appendLine("${resolveInstallActionMessage(result)} <#${result.channelId}> / 메시지 ID: `${result.messageId}`")
+                append(result.pinStatusLine)
+            }
+
+            HomeDashboardService.Result.NotConfigured ->
+                "설치할 채널을 찾지 못했습니다. `/홈 설치 채널:#채널명`으로 실행해 주세요."
+
+            HomeDashboardService.Result.ChannelNotFound ->
+                "대상 홈 채널을 찾지 못했습니다. 채널을 다시 지정해 주세요."
+
+            HomeDashboardService.Result.MessageNotFound ->
+                "홈 메시지 복구/생성 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요."
+        }
+        val components = resolveInstallComponents(result)
+        interactionReliabilityGuard.safeEditReply(
+            ctx = ctx,
+            message = message,
+            components = components,
+        )
+    }
+
+    private fun resolveInstallComponents(result: HomeDashboardService.Result): List<ActionRow> {
+        if (result !is HomeDashboardService.Result.Success) {
+            return emptyList()
+        }
+        return listOf(ActionRow.of(Button.secondary(DashboardActionIds.HOME_PIN_RECHECK, "고정 상태 재확인")))
+    }
+
+    private fun resolveCreateActionMessage(result: HomeDashboardService.Result.Success): String {
+        if (result.createdNew) {
+            return "홈 메시지를 생성했습니다."
+        }
+        return "기존 홈 메시지를 갱신했습니다."
+    }
+
+    private fun resolveInstallActionMessage(result: HomeDashboardService.Result.Success): String {
+        if (result.createdNew) {
+            return "홈 메시지를 생성했습니다."
+        }
+        return "기존 홈 메시지를 재사용/복구했습니다."
+    }
 
     private fun isSubcommand(event: SlashCommandInteractionEvent, ko: String, en: String): Boolean {
         return event.subcommandName == ko || event.subcommandName == en
