@@ -76,18 +76,29 @@ docker compose up -d postgres
 - `DiscordBotConfig`
   - `DISCORD_TOKEN`/`DISCORD_GUILD_ID`로 JDA 생성 및 로그인
   - `GUILD_VOICE_STATES` intent 활성화
-  - 시작 시 길드 커맨드 `/ping`, `/agenda`, `/mogakco` 등록 (`updateCommands`)
+  - 시작 시 명령 스펙(`DiscordCommandSpec`) 기반으로 길드 커맨드 등록
 - `AgendaSlashCommandHandler`
-  - `/agenda set url:<필수> title:<선택>`
-  - `/agenda today`
+  - `/안건 생성 링크:<필수> 제목:<선택>`
+  - `/안건 오늘`, `/안건 최근`
   - `guild_config.admin_role_id` 권한 체크 후 오늘(Asia/Seoul) 안건 링크 upsert
 - `MogakcoSlashCommandHandler`
-  - `/mogakco channel add channel:<voice>`
-  - `/mogakco channel remove channel:<voice>`
-  - `/mogakco leaderboard period:<week|month> [top]`
-  - `/mogakco me period:<week|month>`
+  - `/모각코 채널 등록 채널:<voice>`
+  - `/모각코 채널 해제 채널:<voice>`
+  - `/모각코 랭킹 기간:<week|month> [인원]`
+  - `/모각코 내정보 기간:<week|month>`
+- `HomeSlashCommandHandler`
+  - `/홈 생성 채널:<text>`
+  - `/홈 갱신`
+  - `/홈 설치 [채널]`
+- `MeetingSlashCommandHandler`
+  - `/회의 시작 채널:<text>`, `/회의 종료`
+  - `/결정 내용:<text>`, `/액션 내용:<text> [담당자] [기한]`, `/투두 내용:<text>`
+  - `/회의 항목조회`, `/회의 항목취소 아이디:<id>`
+- `AssignmentSlashCommandHandler`
+  - `/과제 등록 제목/링크/알림/마감 ...`
+  - `/과제 목록`, `/과제 상세 아이디:<id>`, `/과제 완료 아이디:<id>`, `/과제 삭제 아이디:<id>`
 - `PingSlashCommandListener`
-  - `/ping` 입력 시 `pong`을 ephemeral로 응답
+  - `/핑` 입력 시 `pong`을 ephemeral로 응답
 - `VoiceStateIngestionListener`
   - 음성 채널 입장/퇴장 이벤트 수신 지점 (`GuildVoiceUpdateEvent`)
   - 모각코 등록 채널의 `voice_sessions`를 자동 기록
@@ -98,19 +109,19 @@ docker compose up -d postgres
 
 ```kotlin
 guild.updateCommands()
-    .addCommands(Commands.slash("ping", "Health check"))
+    .addCommands(Commands.slash("핑", "봇 동작 확인"))
     .queue()
 ```
 
 `upsertCommand` 방식:
 
 ```kotlin
-guild.upsertCommand("ping", "Health check").queue()
+guild.upsertCommand("핑", "봇 동작 확인").queue()
 ```
 
 ## Agenda 명령 사용 전 준비
 
-`/agenda set`은 운영진 role 권한이 필요합니다.  
+`/안건 생성`은 운영진 role 권한이 필요합니다.  
 `guild_config`에 대상 길드의 `admin_role_id`가 있어야 합니다.
 
 ## Mogakco 집계 방식
@@ -137,14 +148,14 @@ RDS 사용 시:
 - `app`의 `depends_on`에서 `postgres` 제거
 - `SPRING_DATASOURCE_URL/USERNAME/PASSWORD`를 RDS 값으로 설정
 
-## 실행 체크리스트 (/ping, /agenda, /mogakco)
+## 실행 체크리스트 (/핑, /안건, /모각코)
 
 - [ ] Discord Developer Portal에서 봇 초대 링크 생성 시 scopes에 `bot`, `applications.commands` 포함
 - [ ] `DISCORD_TOKEN` 환경변수 설정
-- [ ] `/ping` 동작 확인
-- [ ] `/agenda set` -> `/agenda today` 동작 확인
-- [ ] `/mogakco channel add`로 모각코 채널 등록
-- [ ] 해당 음성채널 입장/퇴장 후 `/mogakco me`, `/mogakco leaderboard` 동작 확인
+- [ ] `/핑` 동작 확인
+- [ ] `/안건 생성` -> `/안건 오늘` 동작 확인
+- [ ] `/모각코 채널 등록`으로 모각코 채널 등록
+- [ ] 해당 음성채널 입장/퇴장 후 `/모각코 내정보`, `/모각코 랭킹` 동작 확인
 
 ## Branch and CI/CD Flow
 
