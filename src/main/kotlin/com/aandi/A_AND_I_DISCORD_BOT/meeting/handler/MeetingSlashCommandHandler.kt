@@ -1,5 +1,7 @@
 package com.aandi.A_AND_I_DISCORD_BOT.meeting.handler
 
+import com.aandi.A_AND_I_DISCORD_BOT.admin.service.GuildConfigService
+import com.aandi.A_AND_I_DISCORD_BOT.common.auth.HomeChannelGuard
 import com.aandi.A_AND_I_DISCORD_BOT.common.auth.PermissionGate
 import com.aandi.A_AND_I_DISCORD_BOT.common.config.FeatureFlagsProperties
 import com.aandi.A_AND_I_DISCORD_BOT.common.discord.DiscordReplyFactory
@@ -29,6 +31,8 @@ import java.util.concurrent.CompletableFuture
 class MeetingSlashCommandHandler(
     private val meetingService: MeetingService,
     private val permissionGate: PermissionGate,
+    private val guildConfigService: GuildConfigService,
+    private val homeChannelGuard: HomeChannelGuard,
     private val featureFlags: FeatureFlagsProperties,
     private val discordReplyFactory: DiscordReplyFactory,
     private val interactionReliabilityGuard: InteractionReliabilityGuard,
@@ -87,6 +91,9 @@ class MeetingSlashCommandHandler(
             discordReplyFactory.invalidInput(event, "길드에서만 사용할 수 있습니다.")
             return
         }
+        if (isBlockedByHomeChannelGuard(event, guild.idLong)) {
+            return
+        }
         if (!featureFlags.meetingSummaryV2) {
             discordReplyFactory.invalidInput(event, "`FEATURE_MEETING_SUMMARY_V2=true`에서 사용할 수 있는 기능입니다.")
             return
@@ -137,6 +144,9 @@ class MeetingSlashCommandHandler(
         val member = event.member
         if (guild == null || member == null) {
             discordReplyFactory.invalidInput(event, "길드에서만 사용할 수 있습니다.")
+            return
+        }
+        if (isBlockedByHomeChannelGuard(event, guild.idLong)) {
             return
         }
         if (!featureFlags.meetingSummaryV2) {
@@ -199,6 +209,9 @@ class MeetingSlashCommandHandler(
         val member = event.member
         if (guild == null || member == null) {
             discordReplyFactory.invalidInput(event, "길드에서만 사용할 수 있습니다.")
+            return
+        }
+        if (isBlockedByHomeChannelGuard(event, guild.idLong)) {
             return
         }
         if (!featureFlags.meetingSummaryV2) {
@@ -282,6 +295,9 @@ class MeetingSlashCommandHandler(
             discordReplyFactory.invalidInput(event, "길드에서만 사용할 수 있습니다.")
             return
         }
+        if (isBlockedByHomeChannelGuard(event, guild.idLong)) {
+            return
+        }
         if (!featureFlags.meetingSummaryV2) {
             discordReplyFactory.invalidInput(event, "`FEATURE_MEETING_SUMMARY_V2=true`에서 사용할 수 있는 기능입니다.")
             return
@@ -325,6 +341,9 @@ class MeetingSlashCommandHandler(
         val member = event.member
         if (guild == null || member == null) {
             discordReplyFactory.invalidInput(event, "길드에서만 사용할 수 있습니다.")
+            return
+        }
+        if (isBlockedByHomeChannelGuard(event, guild.idLong)) {
             return
         }
         if (!featureFlags.meetingSummaryV2) {
@@ -664,7 +683,10 @@ class MeetingSlashCommandHandler(
             discordReplyFactory.invalidInput(event, "길드에서만 사용할 수 있습니다.")
             return
         }
-        if (!permissionGate.canAdminAction(guild.idLong, member)) {
+        if (isBlockedByHomeChannelGuard(event, guild.idLong)) {
+            return
+        }
+        if (!permissionGate.canStartMeeting(guild.idLong, member)) {
             discordReplyFactory.accessDenied(event, "회의 시작 권한이 없습니다.")
             return
         }
@@ -852,6 +874,24 @@ class MeetingSlashCommandHandler(
             return "연결 안건 `없음`"
         }
         return "연결 안건 `${title}` (${url})"
+    }
+
+    private fun isBlockedByHomeChannelGuard(event: SlashCommandInteractionEvent, guildId: Long): Boolean {
+        val meetingChannelId = guildConfigService.getBoardChannels(guildId).meetingChannelId
+        val guardResult = homeChannelGuard.validate(
+            guildId = guildId,
+            currentChannelId = event.channel.idLong,
+            featureChannelId = meetingChannelId,
+            featureName = "회의",
+            setupCommand = "/설정 회의채널 채널:#회의",
+            usageCommand = "/회의 시작 채널:#회의",
+        )
+        if (guardResult is HomeChannelGuard.GuardResult.Allowed) {
+            return false
+        }
+        val blocked = guardResult as HomeChannelGuard.GuardResult.Blocked
+        discordReplyFactory.invalidInput(event, blocked.message)
+        return true
     }
 
     private fun parseSummaryInteractionToken(customId: String?): SummaryToken? {

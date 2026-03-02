@@ -197,6 +197,7 @@ class MeetingEndUseCase(
     ): MeetingService.SummaryMutationResult {
         val sessionId = session.id ?: return MeetingService.SummaryMutationResult.SessionNotFound
         val summary = meetingSummaryArtifactService.toSummary(artifact)
+        val structuredItems = meetingStructuredItemService.listSummaryItems(sessionId)
         val summaryMessage = meetingThreadGateway.upsertSummaryV2(
             thread = thread,
             sessionId = sessionId,
@@ -206,6 +207,9 @@ class MeetingEndUseCase(
             participantCount = artifact.participantCount,
             sourceWindowStart = artifact.sourceWindowStart,
             sourceWindowEnd = artifact.sourceWindowEnd,
+            structuredDecisions = structuredItems.decisions,
+            structuredActions = structuredItems.actions,
+            structuredTodos = structuredItems.todos,
         )
 
         val nowUtc = Instant.now(clock)

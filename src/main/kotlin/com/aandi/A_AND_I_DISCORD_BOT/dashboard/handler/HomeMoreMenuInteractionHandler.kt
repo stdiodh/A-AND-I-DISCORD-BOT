@@ -1,5 +1,6 @@
 package com.aandi.A_AND_I_DISCORD_BOT.dashboard.handler
 
+import com.aandi.A_AND_I_DISCORD_BOT.admin.service.GuildConfigService
 import com.aandi.A_AND_I_DISCORD_BOT.assignment.service.AssignmentTaskService
 import com.aandi.A_AND_I_DISCORD_BOT.common.discord.InteractionReliabilityGuard
 import com.aandi.A_AND_I_DISCORD_BOT.common.time.KstTime
@@ -8,7 +9,6 @@ import com.aandi.A_AND_I_DISCORD_BOT.dashboard.ui.DashboardActionIds
 import com.aandi.A_AND_I_DISCORD_BOT.discord.interaction.InteractionPrefixHandler
 import net.dv8tion.jda.api.components.actionrow.ActionRow
 import net.dv8tion.jda.api.components.buttons.Button
-import net.dv8tion.jda.api.components.selections.StringSelectMenu
 import net.dv8tion.jda.api.events.interaction.component.StringSelectInteractionEvent
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Component
@@ -18,6 +18,7 @@ import java.util.concurrent.CompletableFuture
 @ConditionalOnProperty(name = ["discord.enabled"], havingValue = "true", matchIfMissing = true)
 class HomeMoreMenuInteractionHandler(
     private val assignmentTaskService: AssignmentTaskService,
+    private val guildConfigService: GuildConfigService,
     private val interactionReliabilityGuard: InteractionReliabilityGuard,
 ) : InteractionPrefixHandler {
 
@@ -44,32 +45,43 @@ class HomeMoreMenuInteractionHandler(
                     runCatching {
                         when (selected) {
                             HomeDashboardService.HOME_MORE_AGENDA -> {
-                                interactionReliabilityGuard.safeEditReply(
-                                    ctx = ctx,
-                                    message = "안건 설정을 진행하려면 아래 버튼을 누르세요.",
-                                    components = listOf(ActionRow.of(Button.secondary(DashboardActionIds.AGENDA_SET, "안건 설정"))),
-                                )
+                                val boards = guildConfigService.getBoardChannels(guild.idLong)
+                                val meetingChannelId = boards.meetingChannelId
+                                if (meetingChannelId == null) {
+                                    interactionReliabilityGuard.safeEditReply(
+                                        ctx = ctx,
+                                        message = "회의 공지 채널이 설정되지 않았습니다. `/설정 회의채널 채널:#회의`를 먼저 설정해 주세요.",
+                                    )
+                                } else {
+                                    interactionReliabilityGuard.safeEditReply(
+                                        ctx = ctx,
+                                        message = "안건 설정은 회의 채널에서 진행해 주세요.\n채널: <#${meetingChannelId}>\n명령어: `/안건 생성 링크:<URL> 제목:<선택>`",
+                                        components = listOf(ActionRow.of(Button.link(channelJumpUrl(guild.idLong, meetingChannelId), "회의 채널 이동"))),
+                                    )
+                                }
                             }
 
                             HomeDashboardService.HOME_MORE_TASK_LIST -> {
-                                val message = buildTaskListMessage(guild.idLong)
-                                interactionReliabilityGuard.safeEditReply(ctx, message)
+                                val boards = guildConfigService.getBoardChannels(guild.idLong)
+                                val assignmentChannelId = boards.assignmentChannelId
+                                if (assignmentChannelId == null) {
+                                    val message = buildTaskListMessage(guild.idLong)
+                                    interactionReliabilityGuard.safeEditReply(ctx, "$message\n\n과제 공지 채널을 쓰려면 `/설정 과제공지채널`을 설정해 주세요.")
+                                } else {
+                                    interactionReliabilityGuard.safeEditReply(
+                                        ctx = ctx,
+                                        message = "과제 목록은 과제 채널에서 확인해 주세요.\n채널: <#${assignmentChannelId}>\n명령어: `/과제 목록`",
+                                        components = listOf(ActionRow.of(Button.link(channelJumpUrl(guild.idLong, assignmentChannelId), "과제 채널 이동"))),
+                                    )
+                                }
                             }
 
                             HomeDashboardService.HOME_MORE_MOGAKCO_RANK -> {
-                                interactionReliabilityGuard.safeEditReply(
-                                    ctx = ctx,
-                                    message = "조회할 기간을 선택하세요.",
-                                    components = listOf(ActionRow.of(periodSelectMenu(DashboardActionIds.MOGAKCO_RANK_SELECT))),
-                                )
+                                routeToMogakcoChannel(ctx, guild.idLong, "모각코 랭킹은 모각코 채널에서 확인해 주세요.\n명령어: `/모각코 랭킹 기간:day`")
                             }
 
                             HomeDashboardService.HOME_MORE_MOGAKCO_ME -> {
-                                interactionReliabilityGuard.safeEditReply(
-                                    ctx = ctx,
-                                    message = "내 기록은 본인에게만 표시됩니다.\n조회할 기간을 선택하세요.",
-                                    components = listOf(ActionRow.of(periodSelectMenu(DashboardActionIds.MOGAKCO_ME_SELECT))),
-                                )
+                                routeToMogakcoChannel(ctx, guild.idLong, "내 기록은 모각코 채널에서 실행해 주세요.\n명령어: `/모각코 오늘` 또는 `/모각코 내정보 기간:day`")
                             }
 
                             HomeDashboardService.HOME_MORE_SETTINGS_HELP -> {
@@ -77,8 +89,11 @@ class HomeMoreMenuInteractionHandler(
                                     ctx = ctx,
                                     message = "설정/도움말\n" +
                                         "• 운영진 역할 설정: `/설정 운영진역할`\n" +
+                                        "• 회의 공지 채널: `/설정 회의채널`\n" +
+                                        "• 모각코 공지 채널: `/설정 모각코채널`\n" +
+                                        "• 과제 공지 채널: `/설정 과제공지채널`\n" +
                                         "• 홈 재설치/핀 점검: `/홈 설치`\n" +
-                                        "• 회의 안건 등록: `/회의 안건등록 링크:<URL>`",
+                                        "• 회의 안건 등록: `/안건 생성 링크:<URL>`",
                                 )
                             }
 
@@ -104,6 +119,31 @@ class HomeMoreMenuInteractionHandler(
         return true
     }
 
+    private fun routeToMogakcoChannel(
+        ctx: InteractionReliabilityGuard.InteractionCtx,
+        guildId: Long,
+        baseMessage: String,
+    ) {
+        val boards = guildConfigService.getBoardChannels(guildId)
+        val mogakcoChannelId = boards.mogakcoChannelId
+        if (mogakcoChannelId == null) {
+            interactionReliabilityGuard.safeEditReply(
+                ctx,
+                "모각코 공지 채널이 설정되지 않았습니다. `/설정 모각코채널 채널:#모각코`를 먼저 설정해 주세요.",
+            )
+            return
+        }
+        interactionReliabilityGuard.safeEditReply(
+            ctx = ctx,
+            message = "$baseMessage\n채널: <#${mogakcoChannelId}>",
+            components = listOf(ActionRow.of(Button.link(channelJumpUrl(guildId, mogakcoChannelId), "모각코 채널 이동"))),
+        )
+    }
+
+    private fun channelJumpUrl(guildId: Long, channelId: Long): String {
+        return "https://discord.com/channels/$guildId/$channelId"
+    }
+
     private fun buildTaskListMessage(guildId: Long): String {
         val result = assignmentTaskService.list(guildId, null)
         if (result is AssignmentTaskService.ListResult.InvalidStatus) {
@@ -120,11 +160,4 @@ class HomeMoreMenuInteractionHandler(
         return "과제 목록(최대 10건)\n${lines.joinToString("\n")}"
     }
 
-    private fun periodSelectMenu(customId: String): StringSelectMenu {
-        return StringSelectMenu.create(customId)
-            .setPlaceholder("기간을 선택하세요")
-            .addOption("주간", "week")
-            .addOption("월간", "month")
-            .build()
-    }
 }

@@ -13,7 +13,7 @@ class DashboardRenderer {
 
         return DashboardView(
             title = "A&I 운영 홈",
-            overview = "서버: **$safeName**\n버튼으로 회의/안건/과제/모각코를 바로 실행하세요.",
+            overview = "서버: **$safeName**\n버튼으로 기능별 채널로 이동한 뒤 명령어를 실행하세요.",
             meetingSection = meeting,
             assignmentSection = assignment,
             mogakcoSection = mogakco,

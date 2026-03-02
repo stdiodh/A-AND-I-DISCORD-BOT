@@ -291,9 +291,16 @@ class MeetingThreadGateway(
         val actionItemsText = toBullet(summary.actionItems, "추출된 액션아이템이 없습니다.")
         val todosText = toBullet(summary.todos, "추출된 TODO 항목이 없습니다.")
         val highlightsText = toBullet(summary.highlights, "핵심 문장을 추출하지 못했습니다.")
-        val countLine = "결정 ${summary.decisions.size} / 액션 ${summary.actionItems.size} / TODO ${summary.todos.size} / 참여자 $participantCount"
+        val v2Decisions = resolveV2Items(structuredDecisions, summary.decisions)
+        val v2Actions = resolveV2Items(structuredActions, summary.actionItems)
+        val v2Todos = resolveV2Items(structuredTodos, summary.todos)
+        val countLine = if (meetingSummaryV2) {
+            "결정 ${v2Decisions.size} / 액션 ${v2Actions.size} / TODO ${v2Todos.size} / 참여자 $participantCount"
+        } else {
+            "결정 ${summary.decisions.size} / 액션 ${summary.actionItems.size} / TODO ${summary.todos.size} / 참여자 $participantCount"
+        }
         val description = if (meetingSummaryV2) {
-            "스레드 텍스트 기반 자동 요약 v2입니다. (분석 메시지 수: $sourceMessageCount)"
+            "회의 중 기록된 항목 기반 요약 v2입니다. (분석 메시지 수: $sourceMessageCount)"
         } else {
             "스레드 텍스트 기반 자동 요약입니다. (분석 메시지 수: $sourceMessageCount)"
         }
@@ -302,17 +309,19 @@ class MeetingThreadGateway(
             .setTitle(if (meetingSummaryV2) "회의 요약 (v2)" else "회의 요약 (MVP0)")
             .setDescription(description)
             .addField("요약 통계", countLine, false)
-            .setFooter("결정/액션은 패턴 기반 추출 결과입니다.")
+            .setFooter(
+                if (meetingSummaryV2) {
+                    "결정/액션/TODO는 회의 중 기록한 구조화 항목 기준입니다."
+                } else {
+                    "결정/액션은 패턴 기반 추출 결과입니다."
+                },
+            )
 
         if (meetingSummaryV2) {
             embedBuilder
-                .addField("결정(구조화)", toBullet(structuredDecisions, "등록된 결정이 없습니다."), false)
-                .addField("결정(추출)", toBullet(extractedDecisions, "추출된 결정 항목이 없습니다."), false)
-                .addField("액션(구조화)", toBullet(structuredActions, "등록된 액션이 없습니다."), false)
-                .addField("액션(추출)", toBullet(extractedActions, "추출된 액션아이템이 없습니다."), false)
-                .addField("TODO(구조화)", toBullet(structuredTodos, "등록된 TODO가 없습니다."), false)
-                .addField("TODO(추출)", toBullet(extractedTodos, "추출된 TODO 항목이 없습니다."), false)
-                .addField("핵심문장", highlightsText, false)
+                .addField("결정", toBullet(v2Decisions, "등록된 결정이 없습니다."), false)
+                .addField("액션", toBullet(v2Actions, "등록된 액션이 없습니다."), false)
+                .addField("TODO", toBullet(v2Todos, "등록된 TODO가 없습니다."), false)
         } else {
             embedBuilder
                 .addField("결정", decisionsText, false)
@@ -321,10 +330,10 @@ class MeetingThreadGateway(
                 .addField("핵심문장", highlightsText, false)
         }
 
-        if (meetingSummaryV2 && summary.decisions.isEmpty() && summary.actionItems.isEmpty() && summary.todos.isEmpty()) {
+        if (meetingSummaryV2 && v2Decisions.isEmpty() && v2Actions.isEmpty() && v2Todos.isEmpty()) {
             embedBuilder.addField(
                 "안내",
-                "결정/액션/TODO를 아직 인식하지 못했어요. 아래에서 추가하거나 재생성할 수 있어요.",
+                "결정/액션/TODO가 아직 없습니다. `/결정`, `/액션`, `/투두`로 기록하거나 아래 버튼으로 추가해 주세요.",
                 false,
             )
         }
@@ -345,6 +354,16 @@ class MeetingThreadGateway(
             return fallback
         }
         return items.joinToString("\n") { "• $it" }
+    }
+
+    private fun resolveV2Items(
+        structured: List<String>,
+        merged: List<String>,
+    ): List<String> {
+        if (structured.isNotEmpty()) {
+            return structured
+        }
+        return merged
     }
 
     data class MessageCollectionResult(

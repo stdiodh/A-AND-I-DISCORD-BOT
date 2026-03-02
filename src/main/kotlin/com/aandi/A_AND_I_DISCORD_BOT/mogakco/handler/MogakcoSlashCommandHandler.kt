@@ -1,5 +1,7 @@
 package com.aandi.A_AND_I_DISCORD_BOT.mogakco.handler
 
+import com.aandi.A_AND_I_DISCORD_BOT.admin.service.GuildConfigService
+import com.aandi.A_AND_I_DISCORD_BOT.common.auth.HomeChannelGuard
 import com.aandi.A_AND_I_DISCORD_BOT.common.auth.PermissionGate
 import com.aandi.A_AND_I_DISCORD_BOT.common.discord.DiscordReplyFactory
 import com.aandi.A_AND_I_DISCORD_BOT.common.format.DurationFormatter
@@ -16,6 +18,8 @@ class MogakcoSlashCommandHandler(
     private val durationFormatter: DurationFormatter,
     private val permissionGate: PermissionGate,
     private val discordReplyFactory: DiscordReplyFactory,
+    private val guildConfigService: GuildConfigService,
+    private val homeChannelGuard: HomeChannelGuard,
 ) : ListenerAdapter() {
 
     override fun onSlashCommandInteraction(event: SlashCommandInteractionEvent) {
@@ -34,6 +38,10 @@ class MogakcoSlashCommandHandler(
         }
         if (isSubcommand(event, SUBCOMMAND_ME_KO, SUBCOMMAND_ME_EN)) {
             handleMe(event)
+            return
+        }
+        if (isSubcommand(event, SUBCOMMAND_TODAY_KO, SUBCOMMAND_TODAY_EN)) {
+            handleToday(event)
             return
         }
 
@@ -190,10 +198,13 @@ class MogakcoSlashCommandHandler(
             replyGuildOnlyError(event)
             return
         }
+        if (isBlockedByHomeChannelGuard(event, guild.idLong)) {
+            return
+        }
 
         val period = parsePeriod(event.getOption(OPTION_PERIOD_KO)?.asString ?: event.getOption(OPTION_PERIOD_EN)?.asString)
         if (period == null) {
-            replyInvalidInputError(event, "기간은 week 또는 month만 가능합니다.")
+            replyInvalidInputError(event, "기간은 day/week/month만 가능합니다.")
             return
         }
 
@@ -210,9 +221,30 @@ class MogakcoSlashCommandHandler(
             val bar = progressBar(entry.totalSeconds.toDouble() / maxSeconds.toDouble(), 8)
             "$medal <@${entry.userId}> - ${durationFormatter.toHourMinute(entry.totalSeconds)} $bar"
         }
+        val payload = "${periodLabel(period)} 모각코 랭킹\n${rows.joinToString(separator = "\\n")}"
 
-        event.reply("${periodLabel(period)} 모각코 랭킹\n${rows.joinToString(separator = "\\n")}")
-            .queue()
+        val boardChannelId = guildConfigService.getBoardChannels(guild.idLong).mogakcoChannelId
+        if (boardChannelId == null || event.channel.idLong == boardChannelId) {
+            event.reply(payload).queue()
+            return
+        }
+
+        val boardChannel = guild.getTextChannelById(boardChannelId)
+        if (boardChannel == null) {
+            replyInvalidInputError(event, "모각코 공지 채널을 찾지 못했습니다. `/설정 모각코채널`을 다시 설정해 주세요.")
+            return
+        }
+
+        boardChannel.sendMessage(payload).queue(
+            { message ->
+                event.reply("모각코 랭킹을 <#${boardChannelId}> 채널에 게시했습니다.\n바로가기: ${message.jumpUrl}")
+                    .setEphemeral(true)
+                    .queue()
+            },
+            {
+                replyInvalidInputError(event, "모각코 공지 채널로 전송하지 못했습니다. 권한을 확인해 주세요.")
+            },
+        )
     }
 
     private fun handleMe(event: SlashCommandInteractionEvent) {
@@ -222,10 +254,13 @@ class MogakcoSlashCommandHandler(
             replyGuildOnlyError(event)
             return
         }
+        if (isBlockedByHomeChannelGuard(event, guild.idLong)) {
+            return
+        }
 
         val period = parsePeriod(event.getOption(OPTION_PERIOD_KO)?.asString ?: event.getOption(OPTION_PERIOD_EN)?.asString)
         if (period == null) {
-            replyInvalidInputError(event, "기간은 week 또는 month만 가능합니다.")
+            replyInvalidInputError(event, "기간은 day/week/month만 가능합니다.")
             return
         }
 
@@ -235,29 +270,86 @@ class MogakcoSlashCommandHandler(
             period = period,
         )
 
-        val message = buildString {
-            appendLine("${periodLabel(period)} 내 모각코 통계 📈")
-            appendLine("⏱ 누적시간: ${durationFormatter.toHourMinute(stats.totalSeconds)}")
-            appendLine("📅 참여일수: ${stats.activeDays}/${stats.totalDays}일 (기준 ${stats.activeMinutesThreshold}분)")
-            append("📊 참여율: ${formatPercent(stats.participationRate)} ${progressBar(stats.participationRate, 10)}")
-        }
+        val message = buildStatsMessage(period, stats)
 
         event.reply(message)
             .setEphemeral(true)
             .queue()
     }
 
+    private fun handleToday(event: SlashCommandInteractionEvent) {
+        val guild = event.guild
+        val member = event.member
+        if (guild == null || member == null) {
+            replyGuildOnlyError(event)
+            return
+        }
+        if (isBlockedByHomeChannelGuard(event, guild.idLong)) {
+            return
+        }
+
+        val stats = mogakcoService.getTodayStats(
+            guildId = guild.idLong,
+            userId = member.idLong,
+        )
+
+        event.reply(buildStatsMessage(PeriodType.DAY, stats))
+            .setEphemeral(true)
+            .queue()
+    }
+
+    private fun buildStatsMessage(period: PeriodType, stats: MogakcoService.MyStatsView): String {
+        val total = durationFormatter.toHourMinute(stats.totalSeconds)
+        val attendanceTargetSeconds = stats.activeMinutesThreshold.toLong() * 60L
+        val attendanceRate = if (attendanceTargetSeconds <= 0) 0.0 else stats.totalSeconds.toDouble() / attendanceTargetSeconds.toDouble()
+        val oneHourRate = stats.totalSeconds.toDouble() / ONE_HOUR_SECONDS.toDouble()
+
+        if (period == PeriodType.DAY) {
+            return buildString {
+                appendLine("오늘 내 모각코 통계 📈")
+                appendLine("⏱ 오늘 누적시간: $total")
+                appendLine(
+                    "✅ 출석체크(${stats.activeMinutesThreshold}분): ${remainingLine(stats.totalSeconds, attendanceTargetSeconds)} " +
+                        progressBar(attendanceRate, 10),
+                )
+                append("🎯 1시간 목표: ${remainingLine(stats.totalSeconds, ONE_HOUR_SECONDS)} ${progressBar(oneHourRate, 10)}")
+            }
+        }
+
+        return buildString {
+            appendLine("${periodLabel(period)} 내 모각코 통계 📈")
+            appendLine("⏱ 누적시간: $total")
+            appendLine("📅 참여일수: ${stats.activeDays}/${stats.totalDays}일 (기준 ${stats.activeMinutesThreshold}분)")
+            append("📊 참여율: ${formatPercent(stats.participationRate)} ${progressBar(stats.participationRate, 10)}")
+        }
+    }
+
+    private fun remainingLine(currentSeconds: Long, targetSeconds: Long): String {
+        if (targetSeconds <= 0L) {
+            return "완료 ✅"
+        }
+        val remainingSeconds = targetSeconds - currentSeconds
+        if (remainingSeconds <= 0L) {
+            return "완료 ✅"
+        }
+        return "남은시간 ${durationFormatter.toHourMinute(remainingSeconds)}"
+    }
+
     private fun periodLabel(periodType: PeriodType): String = when (periodType) {
+        PeriodType.DAY -> "오늘"
         PeriodType.WEEK -> "이번 주"
         PeriodType.MONTH -> "이번 달"
     }
 
     private fun parsePeriod(raw: String?): PeriodType? {
         val normalized = raw?.lowercase()
-        if (normalized == "week") {
+        if (normalized == "day" || normalized == "today" || normalized == "일간" || normalized == "오늘") {
+            return PeriodType.DAY
+        }
+        if (normalized == "week" || normalized == "주간") {
             return PeriodType.WEEK
         }
-        if (normalized == "month") {
+        if (normalized == "month" || normalized == "월간") {
             return PeriodType.MONTH
         }
         return null
@@ -299,6 +391,24 @@ class MogakcoSlashCommandHandler(
         discordReplyFactory.invalidInput(event, "길드에서만 사용할 수 있습니다.")
     }
 
+    private fun isBlockedByHomeChannelGuard(event: SlashCommandInteractionEvent, guildId: Long): Boolean {
+        val mogakcoChannelId = guildConfigService.getBoardChannels(guildId).mogakcoChannelId
+        val guardResult = homeChannelGuard.validate(
+            guildId = guildId,
+            currentChannelId = event.channel.idLong,
+            featureChannelId = mogakcoChannelId,
+            featureName = "모각코",
+            setupCommand = "/설정 모각코채널 채널:#모각코",
+            usageCommand = "/모각코 오늘",
+        )
+        if (guardResult is HomeChannelGuard.GuardResult.Allowed) {
+            return false
+        }
+        val blocked = guardResult as HomeChannelGuard.GuardResult.Blocked
+        replyInvalidInputError(event, blocked.message)
+        return true
+    }
+
     private fun replyInvalidInputError(event: SlashCommandInteractionEvent, message: String) {
         discordReplyFactory.invalidInput(event, message)
     }
@@ -331,6 +441,8 @@ class MogakcoSlashCommandHandler(
         private const val SUBCOMMAND_LEADERBOARD_EN = "leaderboard"
         private const val SUBCOMMAND_ME_KO = "내정보"
         private const val SUBCOMMAND_ME_EN = "me"
+        private const val SUBCOMMAND_TODAY_KO = "오늘"
+        private const val SUBCOMMAND_TODAY_EN = "today"
         private const val OPTION_CHANNEL_KO = "채널"
         private const val OPTION_CHANNEL_LEGACY_KO = "음성채널"
         private const val OPTION_CHANNEL_EN = "channel"
@@ -338,5 +450,6 @@ class MogakcoSlashCommandHandler(
         private const val OPTION_PERIOD_EN = "period"
         private const val OPTION_TOP_KO = "인원"
         private const val OPTION_TOP_EN = "top"
+        private const val ONE_HOUR_SECONDS = 3600L
     }
 }

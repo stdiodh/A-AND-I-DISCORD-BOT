@@ -42,17 +42,20 @@ class PeriodCalculator(
     }
 
     private fun startDate(periodType: PeriodType, date: LocalDate): LocalDate = when (periodType) {
+        PeriodType.DAY -> date
         PeriodType.WEEK -> date.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
         PeriodType.MONTH -> date.withDayOfMonth(1)
     }
 
     private fun endDate(periodType: PeriodType, startDate: LocalDate): LocalDate = when (periodType) {
+        PeriodType.DAY -> startDate.plusDays(1)
         PeriodType.WEEK -> startDate.plusWeeks(1)
         PeriodType.MONTH -> startDate.plusMonths(1)
     }
 }
 
 enum class PeriodType {
+    DAY,
     WEEK,
     MONTH,
 }
