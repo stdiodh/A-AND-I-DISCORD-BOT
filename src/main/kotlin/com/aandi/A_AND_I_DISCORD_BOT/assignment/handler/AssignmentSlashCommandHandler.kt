@@ -4,6 +4,7 @@ import com.aandi.A_AND_I_DISCORD_BOT.admin.auth.AdminPermissionChecker
 import com.aandi.A_AND_I_DISCORD_BOT.admin.service.GuildConfigService
 import com.aandi.A_AND_I_DISCORD_BOT.assignment.entity.AssignmentStatus
 import com.aandi.A_AND_I_DISCORD_BOT.assignment.service.AssignmentTaskService
+import com.aandi.A_AND_I_DISCORD_BOT.common.auth.HomeChannelGuard
 import com.aandi.A_AND_I_DISCORD_BOT.common.error.DiscordErrorCode
 import com.aandi.A_AND_I_DISCORD_BOT.common.error.DiscordErrorFormatter
 import com.aandi.A_AND_I_DISCORD_BOT.common.error.DiscordErrorResponse
@@ -19,6 +20,7 @@ class AssignmentSlashCommandHandler(
     private val assignmentTaskService: AssignmentTaskService,
     private val adminPermissionChecker: AdminPermissionChecker,
     private val guildConfigService: GuildConfigService,
+    private val homeChannelGuard: HomeChannelGuard,
     private val clock: Clock,
 ) : ListenerAdapter() {
 
@@ -58,6 +60,9 @@ class AssignmentSlashCommandHandler(
             replyInvalidInputError(event, "길드에서만 사용할 수 있습니다.", true)
             return
         }
+        if (isBlockedByHomeChannelGuard(event, guild.idLong)) {
+            return
+        }
         if (!ensureAdmin(event, guild.idLong, member)) {
             return
         }
@@ -80,7 +85,10 @@ class AssignmentSlashCommandHandler(
             return
         }
 
-        val channelId = event.getOption(OPTION_CHANNEL_KO)?.asChannel?.idLong ?: event.channel.idLong
+        val boardChannels = guildConfigService.getBoardChannels(guild.idLong)
+        val channelId = event.getOption(OPTION_CHANNEL_KO)?.asChannel?.idLong
+            ?: boardChannels.assignmentChannelId
+            ?: event.channel.idLong
         val notifyRoleId = resolveNotifyRoleOption(event)?.idLong
         val preReminderHoursRaw = resolvePreReminderOption(event)
         val closingMessageRaw = resolveClosingMessageOption(event)
@@ -147,6 +155,9 @@ class AssignmentSlashCommandHandler(
             replyInvalidInputError(event, "길드에서만 사용할 수 있습니다.", true)
             return
         }
+        if (isBlockedByHomeChannelGuard(event, guild.idLong)) {
+            return
+        }
 
         val rawStatus = event.getOption(OPTION_STATUS_KO)?.asString
         when (val result = assignmentTaskService.list(guild.idLong, rawStatus)) {
@@ -183,6 +194,9 @@ class AssignmentSlashCommandHandler(
         val guild = event.guild
         if (guild == null) {
             replyInvalidInputError(event, "길드에서만 사용할 수 있습니다.", true)
+            return
+        }
+        if (isBlockedByHomeChannelGuard(event, guild.idLong)) {
             return
         }
 
@@ -227,6 +241,9 @@ class AssignmentSlashCommandHandler(
             replyInvalidInputError(event, "길드에서만 사용할 수 있습니다.", true)
             return
         }
+        if (isBlockedByHomeChannelGuard(event, guild.idLong)) {
+            return
+        }
         if (!ensureAdmin(event, guild.idLong, member)) {
             return
         }
@@ -253,6 +270,9 @@ class AssignmentSlashCommandHandler(
         val member = event.member
         if (guild == null || member == null) {
             replyInvalidInputError(event, "길드에서만 사용할 수 있습니다.", true)
+            return
+        }
+        if (isBlockedByHomeChannelGuard(event, guild.idLong)) {
             return
         }
         if (!ensureAdmin(event, guild.idLong, member)) {
@@ -308,6 +328,24 @@ class AssignmentSlashCommandHandler(
         ko: String,
         en: String,
     ): Boolean = event.subcommandName == ko || event.subcommandName == en
+
+    private fun isBlockedByHomeChannelGuard(event: SlashCommandInteractionEvent, guildId: Long): Boolean {
+        val assignmentChannelId = guildConfigService.getBoardChannels(guildId).assignmentChannelId
+        val guardResult = homeChannelGuard.validate(
+            guildId = guildId,
+            currentChannelId = event.channel.idLong,
+            featureChannelId = assignmentChannelId,
+            featureName = "과제",
+            setupCommand = "/설정 과제공지채널 채널:#과제",
+            usageCommand = "/과제 목록",
+        )
+        if (guardResult is HomeChannelGuard.GuardResult.Allowed) {
+            return false
+        }
+        val blocked = guardResult as HomeChannelGuard.GuardResult.Blocked
+        replyInvalidInputError(event, blocked.message, true)
+        return true
+    }
 
     private fun resolveRemindAtOption(event: SlashCommandInteractionEvent): String? {
         return event.getOption(OPTION_REMIND_AT_KO)?.asString

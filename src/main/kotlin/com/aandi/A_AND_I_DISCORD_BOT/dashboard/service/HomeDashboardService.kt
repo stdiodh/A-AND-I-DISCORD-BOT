@@ -1,5 +1,6 @@
 package com.aandi.A_AND_I_DISCORD_BOT.dashboard.service
 
+import com.aandi.A_AND_I_DISCORD_BOT.admin.service.GuildConfigService
 import com.aandi.A_AND_I_DISCORD_BOT.agenda.service.AgendaService
 import com.aandi.A_AND_I_DISCORD_BOT.assignment.service.AssignmentTaskService
 import com.aandi.A_AND_I_DISCORD_BOT.common.config.FeatureFlagsProperties
@@ -33,6 +34,7 @@ import java.time.temporal.ChronoUnit
 @Service
 @ConditionalOnProperty(name = ["discord.enabled"], havingValue = "true", matchIfMissing = true)
 class HomeDashboardService(
+    private val guildConfigService: GuildConfigService,
     private val agendaService: AgendaService,
     private val assignmentTaskService: AssignmentTaskService,
     private val mogakcoService: MogakcoService,
@@ -235,6 +237,7 @@ class HomeDashboardService(
     }
 
     private fun loadBundle(guildId: Long, guildName: String?, homePinStatusLine: String): DashboardBundle {
+        val boardChannels = guildConfigService.getBoardChannels(guildId)
         val agenda = agendaService.getTodayAgenda(guildId)
         val activeSession = meetingSessionRepository.findFirstByGuildIdAndStatusOrderByStartedAtDesc(
             guildId,
@@ -266,18 +269,23 @@ class HomeDashboardService(
             .setTitle(view.title)
             .setDescription(resolveOverviewDescription(view.overview))
             .addField("홈 고정 상태", homePinStatusLine, false)
+            .addField("전용 채널", resolveBoardChannelSection(boardChannels), false)
             .addField("회의 상태", view.meetingSection, false)
             .addField("마감 임박 과제", view.assignmentSection, false)
             .addField("이번 주 모각코", view.mogakcoSection, false)
             .setColor(Color(0x1F8B4C))
             .build()
 
-        val components = buildDashboardComponents(guildId, agenda?.url)
+        val components = buildDashboardComponents(guildId, agenda?.url, boardChannels)
 
         return DashboardBundle(embed = embed, components = components)
     }
 
-    private fun buildDashboardComponents(guildId: Long, agendaUrl: String?): List<ActionRow> {
+    private fun buildDashboardComponents(
+        guildId: Long,
+        agendaUrl: String?,
+        boardChannels: GuildConfigService.BoardChannelConfig,
+    ): List<ActionRow> {
         if (!featureFlags.homeV2) {
             val legacyComponents = mutableListOf<ActionRow>()
             legacyComponents.add(
@@ -300,11 +308,14 @@ class HomeDashboardService(
             return legacyComponents
         }
 
-        val isMeetingActive = meetingSessionRepository.findFirstByGuildIdAndStatusOrderByStartedAtDesc(
-            guildId,
-            MeetingSessionStatus.ACTIVE,
-        ) != null
-        val meetingButton = resolveMeetingButton(isMeetingActive)
+        val meetingButton = resolveMeetingMoveButton(
+            guildId = guildId,
+            meetingChannelId = boardChannels.meetingChannelId,
+        )
+        val assignmentButton = resolveAssignmentMoveButton(
+            guildId = guildId,
+            assignmentChannelId = boardChannels.assignmentChannelId,
+        )
         val moreMenu = StringSelectMenu.create(DashboardActionIds.HOME_MORE_SELECT)
             .setPlaceholder("더보기")
             .addOption("안건 설정", HOME_MORE_AGENDA)
@@ -318,13 +329,22 @@ class HomeDashboardService(
         components.add(
             ActionRow.of(
                 meetingButton,
-                Button.success(DashboardActionIds.ASSIGNMENT_CREATE, "과제 등록"),
+                assignmentButton,
             ),
         )
         components.add(ActionRow.of(moreMenu))
-        if (agendaUrl != null) {
-            components.add(ActionRow.of(Button.link(agendaUrl, "오늘 안건 링크")))
+
+        val linkButtons = mutableListOf<Button>()
+        boardChannels.mogakcoChannelId?.let { mogakcoChannelId ->
+            linkButtons.add(Button.link(channelJumpUrl(guildId, mogakcoChannelId), "모각코 채널 이동"))
         }
+        agendaUrl?.let { url ->
+            linkButtons.add(Button.link(url, "오늘 안건 링크"))
+        }
+        if (linkButtons.isNotEmpty()) {
+            components.add(ActionRow.of(linkButtons))
+        }
+
         return components
     }
 
@@ -491,11 +511,18 @@ class HomeDashboardService(
         return overview
     }
 
-    private fun resolveMeetingButton(isMeetingActive: Boolean): Button {
-        if (isMeetingActive) {
-            return Button.danger(DashboardActionIds.MEETING_START, "회의 종료")
+    private fun resolveMeetingMoveButton(guildId: Long, meetingChannelId: Long?): Button {
+        if (meetingChannelId != null) {
+            return Button.link(channelJumpUrl(guildId, meetingChannelId), "회의 채널 이동")
         }
         return Button.primary(DashboardActionIds.MEETING_START, "회의 시작")
+    }
+
+    private fun resolveAssignmentMoveButton(guildId: Long, assignmentChannelId: Long?): Button {
+        if (assignmentChannelId != null) {
+            return Button.link(channelJumpUrl(guildId, assignmentChannelId), "과제 채널 이동")
+        }
+        return Button.success(DashboardActionIds.ASSIGNMENT_CREATE, "과제 등록")
     }
 
     private fun resolveDdayLabel(dayDiff: Int): String {
@@ -510,6 +537,17 @@ class HomeDashboardService(
             return PinResult.PIN_LIMIT_REACHED
         }
         return PinResult.FAILED
+    }
+
+    private fun resolveBoardChannelSection(config: GuildConfigService.BoardChannelConfig): String {
+        val meeting = config.meetingChannelId?.let { "<#${it}>" } ?: "미설정"
+        val mogakco = config.mogakcoChannelId?.let { "<#${it}>" } ?: "미설정"
+        val assignment = config.assignmentChannelId?.let { "<#${it}>" } ?: "미설정"
+        return "회의: $meeting\n모각코: $mogakco\n과제: $assignment"
+    }
+
+    private fun channelJumpUrl(guildId: Long, channelId: Long): String {
+        return "https://discord.com/channels/$guildId/$channelId"
     }
 
     private data class DashboardBundle(

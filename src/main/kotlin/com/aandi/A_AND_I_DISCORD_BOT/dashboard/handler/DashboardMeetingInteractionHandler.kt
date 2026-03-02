@@ -53,7 +53,7 @@ class DashboardMeetingInteractionHandler(
             event.reply("길드에서만 사용할 수 있습니다.").setEphemeral(true).queue()
             return
         }
-        if (!permissionGate.canAdminAction(guild.idLong, member)) {
+        if (!permissionGate.canStartMeeting(guild.idLong, member)) {
             event.reply("회의 시작 권한이 없습니다.").setEphemeral(true).queue()
             return
         }

@@ -38,6 +38,78 @@ class GuildConfigService(
     }
 
     @Transactional
+    fun setMeetingOpenerRole(guildId: Long, roleId: Long): GuildConfig {
+        val config = getOrCreate(guildId)
+        config.meetingOpenerRoleId = roleId
+        return guildConfigRepository.save(config)
+    }
+
+    @Transactional
+    fun clearMeetingOpenerRole(guildId: Long): GuildConfig {
+        val config = getOrCreate(guildId)
+        config.meetingOpenerRoleId = null
+        return guildConfigRepository.save(config)
+    }
+
+    @Transactional
+    fun getMeetingOpenerRole(guildId: Long): Long? {
+        val config = getOrCreate(guildId)
+        return config.meetingOpenerRoleId
+    }
+
+    @Transactional
+    fun setMeetingBoardChannel(guildId: Long, channelId: Long): GuildConfig {
+        val config = getOrCreate(guildId)
+        config.meetingBoardChannelId = channelId
+        return guildConfigRepository.save(config)
+    }
+
+    @Transactional
+    fun clearMeetingBoardChannel(guildId: Long): GuildConfig {
+        val config = getOrCreate(guildId)
+        config.meetingBoardChannelId = null
+        return guildConfigRepository.save(config)
+    }
+
+    @Transactional
+    fun setMogakcoBoardChannel(guildId: Long, channelId: Long): GuildConfig {
+        val config = getOrCreate(guildId)
+        config.mogakcoBoardChannelId = channelId
+        return guildConfigRepository.save(config)
+    }
+
+    @Transactional
+    fun clearMogakcoBoardChannel(guildId: Long): GuildConfig {
+        val config = getOrCreate(guildId)
+        config.mogakcoBoardChannelId = null
+        return guildConfigRepository.save(config)
+    }
+
+    @Transactional
+    fun setAssignmentBoardChannel(guildId: Long, channelId: Long): GuildConfig {
+        val config = getOrCreate(guildId)
+        config.defaultTaskChannelId = channelId
+        return guildConfigRepository.save(config)
+    }
+
+    @Transactional
+    fun clearAssignmentBoardChannel(guildId: Long): GuildConfig {
+        val config = getOrCreate(guildId)
+        config.defaultTaskChannelId = null
+        return guildConfigRepository.save(config)
+    }
+
+    @Transactional
+    fun getBoardChannels(guildId: Long): BoardChannelConfig {
+        val config = getOrCreate(guildId)
+        return BoardChannelConfig(
+            meetingChannelId = config.meetingBoardChannelId,
+            mogakcoChannelId = config.mogakcoBoardChannelId,
+            assignmentChannelId = config.defaultTaskChannelId,
+        )
+    }
+
+    @Transactional
     fun setDashboard(guildId: Long, channelId: Long, messageId: Long): GuildConfig {
         val config = getOrCreate(guildId)
         config.dashboardChannelId = channelId
@@ -86,5 +158,11 @@ class GuildConfigService(
     data class TaskDefaultConfig(
         val defaultTaskChannelId: Long?,
         val defaultNotifyRoleId: Long?,
+    )
+
+    data class BoardChannelConfig(
+        val meetingChannelId: Long?,
+        val mogakcoChannelId: Long?,
+        val assignmentChannelId: Long?,
     )
 }

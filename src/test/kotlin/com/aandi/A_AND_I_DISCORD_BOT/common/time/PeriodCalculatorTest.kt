@@ -11,6 +11,18 @@ class PeriodCalculatorTest {
     private val periodCalculator = PeriodCalculator("Asia/Seoul", Clock.system(ZoneOffset.UTC))
 
     @Test
+    fun `day window starts same day and ends next day in Asia Seoul`() {
+        val now = Instant.parse("2026-02-24T03:00:00Z")
+
+        val window = periodCalculator.currentWindow(PeriodType.DAY, now)
+
+        assertEquals(Instant.parse("2026-02-23T15:00:00Z"), window.startInclusive)
+        assertEquals(Instant.parse("2026-02-24T15:00:00Z"), window.endExclusive)
+        assertEquals(now, window.measureEndExclusive)
+        assertEquals(1, window.totalDays)
+    }
+
+    @Test
     fun `week window starts monday and ends next monday in Asia Seoul`() {
         val now = Instant.parse("2026-02-24T03:00:00Z")
 

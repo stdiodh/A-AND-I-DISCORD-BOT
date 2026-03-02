@@ -125,4 +125,44 @@ class MogakcoServiceStatisticsTest {
         assertEquals(window.totalDays, result.totalDays)
         assertEquals(0.0, result.participationRate)
     }
+
+    @Test
+    fun `my stats day period returns one-day window and attendance completion`() {
+        val guildId = 201L
+        val userId = 334L
+        val now = Instant.parse("2026-02-24T03:00:00Z")
+        val window = periodCalculator.currentWindow(PeriodType.DAY, now)
+        val sessions = listOf(
+            VoiceSession(
+                guildId = guildId,
+                userId = userId,
+                channelId = 2001L,
+                joinedAt = window.startInclusive.plus(Duration.ofHours(1)),
+                leftAt = window.startInclusive.plus(Duration.ofHours(1).plus(Duration.ofMinutes(45))),
+            ),
+        )
+
+        Mockito.`when`(
+            voiceSessionRepository.findSessionsInRange(
+                guildId,
+                window.startInclusive,
+                window.measureEndExclusive,
+            ),
+        ).thenReturn(sessions)
+        Mockito.`when`(guildConfigRepository.findById(guildId)).thenReturn(
+            Optional.of(
+                GuildConfig(
+                    guildId = guildId,
+                    mogakcoActiveMinutes = 30,
+                ),
+            ),
+        )
+
+        val result = service.getMyStats(guildId = guildId, userId = userId, period = PeriodType.DAY, now = now)
+
+        assertEquals(2700L, result.totalSeconds)
+        assertEquals(1, result.activeDays)
+        assertEquals(1, result.totalDays)
+        assertEquals(1.0, result.participationRate)
+    }
 }

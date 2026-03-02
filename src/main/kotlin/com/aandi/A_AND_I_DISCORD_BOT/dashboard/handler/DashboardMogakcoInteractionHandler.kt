@@ -1,5 +1,6 @@
 package com.aandi.A_AND_I_DISCORD_BOT.dashboard.handler
 
+import com.aandi.A_AND_I_DISCORD_BOT.admin.service.GuildConfigService
 import com.aandi.A_AND_I_DISCORD_BOT.common.format.DurationFormatter
 import com.aandi.A_AND_I_DISCORD_BOT.common.discord.InteractionReliabilityGuard
 import com.aandi.A_AND_I_DISCORD_BOT.common.time.PeriodType
@@ -21,6 +22,7 @@ class DashboardMogakcoInteractionHandler(
     private val mogakcoService: MogakcoService,
     private val durationFormatter: DurationFormatter,
     private val interactionReliabilityGuard: InteractionReliabilityGuard,
+    private val guildConfigService: GuildConfigService,
 ) : InteractionPrefixHandler {
 
     override fun supports(prefix: String): Boolean {
@@ -97,6 +99,7 @@ class DashboardMogakcoInteractionHandler(
     private fun showPeriodSelect(event: ButtonInteractionEvent, customId: String) {
         val menu = StringSelectMenu.create(customId)
             .setPlaceholder("기간을 선택하세요")
+            .addOption("일간", "day")
             .addOption("주간", "week")
             .addOption("월간", "month")
             .build()
@@ -127,9 +130,33 @@ class DashboardMogakcoInteractionHandler(
                     val bar = progressBar(entry.totalSeconds.toDouble() / maxSeconds.toDouble(), 8)
                     "$medal <@${entry.userId}> ${durationFormatter.toHourMinute(entry.totalSeconds)} $bar"
                 }
-                interactionReliabilityGuard.safeEditReply(
-                    ctx,
-                    "${periodLabel(period)} 모각코 랭킹\n${rows.joinToString("\n")}",
+                val payload = "${periodLabel(period)} 모각코 랭킹\n${rows.joinToString("\n")}"
+                val boardChannelId = guildConfigService.getBoardChannels(guild.idLong).mogakcoChannelId
+                if (boardChannelId == null) {
+                    interactionReliabilityGuard.safeEditReply(ctx, payload)
+                    return@safeDefer
+                }
+                val boardChannel = guild.getTextChannelById(boardChannelId)
+                if (boardChannel == null) {
+                    interactionReliabilityGuard.safeEditReply(
+                        ctx,
+                        "모각코 공지 채널을 찾지 못했습니다. `/설정 모각코채널`을 다시 설정해 주세요.",
+                    )
+                    return@safeDefer
+                }
+                boardChannel.sendMessage(payload).queue(
+                    { message ->
+                        interactionReliabilityGuard.safeEditReply(
+                            ctx,
+                            "모각코 랭킹을 <#${boardChannelId}> 채널에 게시했습니다.\n바로가기: ${message.jumpUrl}",
+                        )
+                    },
+                    {
+                        interactionReliabilityGuard.safeEditReply(
+                            ctx,
+                            "모각코 공지 채널로 전송하지 못했습니다. 권한을 확인해 주세요.",
+                        )
+                    },
                 )
             },
             onFailure = { ctx, _ ->
@@ -154,12 +181,7 @@ class DashboardMogakcoInteractionHandler(
             preferUpdate = false,
             onDeferred = { ctx ->
                 val stats = mogakcoService.getMyStats(guild.idLong, member.idLong, period)
-                val message = buildString {
-                    appendLine("${periodLabel(period)} 내 기록 📈")
-                    appendLine("⏱ 누적시간: ${durationFormatter.toHourMinute(stats.totalSeconds)}")
-                    appendLine("📅 참여일: ${stats.activeDays}/${stats.totalDays}일 (기준 ${stats.activeMinutesThreshold}분)")
-                    append("📊 참여율: ${formatPercent(stats.participationRate)} ${progressBar(stats.participationRate, 10)}")
-                }
+                val message = buildMyStatsMessage(period, stats)
                 interactionReliabilityGuard.safeEditReply(ctx, message)
             },
             onFailure = { ctx, _ ->
@@ -171,7 +193,45 @@ class DashboardMogakcoInteractionHandler(
         )
     }
 
+    private fun buildMyStatsMessage(period: PeriodType, stats: MogakcoService.MyStatsView): String {
+        if (period == PeriodType.DAY) {
+            val attendanceTargetSeconds = stats.activeMinutesThreshold.toLong() * 60L
+            val attendanceRate = if (attendanceTargetSeconds <= 0) 0.0 else stats.totalSeconds.toDouble() / attendanceTargetSeconds.toDouble()
+            val oneHourRate = stats.totalSeconds.toDouble() / ONE_HOUR_SECONDS.toDouble()
+            return buildString {
+                appendLine("오늘 내 기록 📈")
+                appendLine("⏱ 오늘 누적시간: ${durationFormatter.toHourMinute(stats.totalSeconds)}")
+                appendLine(
+                    "✅ 출석체크(${stats.activeMinutesThreshold}분): ${remainingLine(stats.totalSeconds, attendanceTargetSeconds)} " +
+                        progressBar(attendanceRate, 10),
+                )
+                append("🎯 1시간 목표: ${remainingLine(stats.totalSeconds, ONE_HOUR_SECONDS)} ${progressBar(oneHourRate, 10)}")
+            }
+        }
+
+        return buildString {
+            appendLine("${periodLabel(period)} 내 기록 📈")
+            appendLine("⏱ 누적시간: ${durationFormatter.toHourMinute(stats.totalSeconds)}")
+            appendLine("📅 참여일: ${stats.activeDays}/${stats.totalDays}일 (기준 ${stats.activeMinutesThreshold}분)")
+            append("📊 참여율: ${formatPercent(stats.participationRate)} ${progressBar(stats.participationRate, 10)}")
+        }
+    }
+
+    private fun remainingLine(currentSeconds: Long, targetSeconds: Long): String {
+        if (targetSeconds <= 0L) {
+            return "완료 ✅"
+        }
+        val remainingSeconds = targetSeconds - currentSeconds
+        if (remainingSeconds <= 0L) {
+            return "완료 ✅"
+        }
+        return "남은시간 ${durationFormatter.toHourMinute(remainingSeconds)}"
+    }
+
     private fun parsePeriod(raw: String?): PeriodType? {
+        if (raw == "day") {
+            return PeriodType.DAY
+        }
         if (raw == "week") {
             return PeriodType.WEEK
         }
@@ -182,6 +242,7 @@ class DashboardMogakcoInteractionHandler(
     }
 
     private fun periodLabel(period: PeriodType): String = when (period) {
+        PeriodType.DAY -> "오늘"
         PeriodType.WEEK -> "이번 주"
         PeriodType.MONTH -> "이번 달"
     }
@@ -204,5 +265,6 @@ class DashboardMogakcoInteractionHandler(
             1 to "🥈",
             2 to "🥉",
         )
+        private const val ONE_HOUR_SECONDS = 3600L
     }
 }

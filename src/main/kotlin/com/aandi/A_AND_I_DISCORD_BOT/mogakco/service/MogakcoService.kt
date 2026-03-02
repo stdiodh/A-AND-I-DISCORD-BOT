@@ -125,6 +125,12 @@ class MogakcoService(
     ): MyStatsView = getMyStats(guildId, userId, period, Instant.now(clock))
 
     @Transactional(readOnly = true)
+    fun getTodayStats(
+        guildId: Long,
+        userId: Long,
+    ): MyStatsView = getMyStats(guildId, userId, PeriodType.DAY, Instant.now(clock))
+
+    @Transactional(readOnly = true)
     fun getMyStats(
         guildId: Long,
         userId: Long,

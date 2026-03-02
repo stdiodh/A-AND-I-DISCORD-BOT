@@ -18,6 +18,9 @@ class GuildConfig(
     @Column(name = "admin_role_id")
     var adminRoleId: Long? = null,
 
+    @Column(name = "meeting_opener_role_id")
+    var meetingOpenerRoleId: Long? = null,
+
     @Column(name = "mogakco_active_minutes", nullable = false)
     var mogakcoActiveMinutes: Int = 30,
 
@@ -26,6 +29,12 @@ class GuildConfig(
 
     @Column(name = "dashboard_message_id")
     var dashboardMessageId: Long? = null,
+
+    @Column(name = "meeting_board_channel_id")
+    var meetingBoardChannelId: Long? = null,
+
+    @Column(name = "mogakco_board_channel_id")
+    var mogakcoBoardChannelId: Long? = null,
 
     @Column(name = "default_task_channel_id")
     var defaultTaskChannelId: Long? = null,

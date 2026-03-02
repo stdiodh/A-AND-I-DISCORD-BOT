@@ -35,8 +35,13 @@ class MeetingStartUseCase(
             return MeetingService.StartResult.AlreadyActive(activeSession.threadId)
         }
 
+        val boards = guildConfigService.getBoardChannels(guildId)
         val dashboard = guildConfigService.getDashboard(guildId)
-        val channelId = targetChannelId ?: dashboard.channelId ?: fallbackChannelId ?: return MeetingService.StartResult.ChannelNotConfigured
+        val channelId = targetChannelId
+            ?: boards.meetingChannelId
+            ?: dashboard.channelId
+            ?: fallbackChannelId
+            ?: return MeetingService.StartResult.ChannelNotConfigured
         val channel = meetingThreadGateway.findTextChannel(channelId) ?: return MeetingService.StartResult.ChannelNotFound
         val nowUtc = Instant.now(clock)
         val todayAgenda = agendaLinkRepository.findByGuildIdAndDateLocal(guildId, periodCalculator.today(nowUtc))

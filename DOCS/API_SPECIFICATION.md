@@ -50,13 +50,18 @@
 
 ### 권한(Auth)
 - `ADMIN_ROLE`: 길드 설정(`guild_config.admin_role_id`)에 등록된 역할을 가진 사용자
+- `MEETING_OPENER_ROLE`: 길드 설정(`guild_config.meeting_opener_role_id`)에 등록된 역할을 가진 사용자
 - `ANY`: 누구나 사용 가능
 - **과제 권한 정책(적용)**:
   - 과제 등록/완료/삭제: `ADMIN_ROLE`
   - 과제 목록/상세: `ANY`
 - **설정 권한 정책(적용)**:
   - `/설정 운영진역할`, `/설정 운영진해제`: `ADMIN_ROLE` 또는 Manage Server/Administrator 허용 (복구용 break-glass)
+  - `/설정 회의열기역할`, `/설정 회의열기해제`: `ADMIN_ROLE` 또는 Manage Server/Administrator 허용
+  - `/설정 회의채널`, `/설정 회의채널해제`, `/설정 모각코채널`, `/설정 모각코채널해제`, `/설정 과제공지채널`, `/설정 과제공지해제`: `ADMIN_ROLE` 또는 Manage Server/Administrator 허용
   - `/설정 운영진조회`: `ANY` (권장: ephemeral 응답)
+  - `/설정 회의열기조회`: `ANY` (권장: ephemeral 응답)
+  - `/설정 채널조회`: `ANY` (권장: ephemeral 응답)
 
 ### 응답 정책
 - 민감/설정 변경: 기본 `ephemeral`
@@ -94,16 +99,17 @@
 
 ### 홈 버튼 인터랙션
 - HOME_V2(`FEATURE_HOME_V2=true`) 기준:
-  - 1행 버튼: `[회의 시작/회의 종료] [과제 등록]`
+  - 1행 버튼: `[회의 채널 이동] [과제 채널 이동]`
   - 2행 셀렉트: `[더보기]`
     - 안건 설정
     - 과제 전체 보기
     - 모각코 전체 보기
     - 내 기록(개인)
     - 설정/도움말
+  - 3행 버튼(설정 시): `[모각코 채널 이동]` (+ 오늘 안건 링크)
   - `내 기록(개인)`은 ephemeral 응답으로 채널 스팸을 방지한다.
 - HOME_V2 비활성 시 기존 버튼 구성을 유지한다.
-- 목표: 명령어 타이핑 최소화. 버튼/셀렉트 → 모달/후속 액션 흐름 제공
+- 목표: 홈은 네비게이션 중심으로 유지하고 실제 공개 출력은 기능별 전용 채널에서 수행
 - `custom_id` 규칙:
   - 대시보드 고정 버튼: `dash:*`
   - 회의 관련 모달/동작: `meeting:*`
@@ -111,6 +117,18 @@
   - 모각코 셀렉트: `mogakco:*`
   - 홈 더보기 셀렉트: `home:more_select`
 - 이벤트 라우팅은 prefix 기반 `InteractionRouter`가 처리한다.
+
+### 홈 채널 가드 규칙
+- 홈 채널(`guild_config.dashboard_channel_id`)에서는 기능 실행 명령을 제한한다.
+- 대상 명령:
+  - `/안건`
+  - `/회의 시작`, `/결정`, `/액션`, `/투두`, `/회의 항목조회`, `/회의 항목취소`
+  - `/모각코 랭킹`, `/모각코 내정보`, `/모각코 오늘`
+  - `/과제` 하위 명령 전체
+- 동작:
+  1. 기능별 전용 채널이 설정되어 있으면 해당 채널 mention과 예시 명령을 안내한다.
+  2. 기능별 전용 채널이 없으면 대응 `/설정 ...채널` 명령으로 설정을 유도한다.
+  3. 홈 채널과 전용 채널이 동일하면 가드를 우회하고 실행을 허용한다.
 
 ### 홈 메시지 보장 규칙
 - 길드별 홈 메시지는 단일 레퍼런스를 유지한다. (`guild_config.dashboard_channel_id`, `dashboard_message_id`)
@@ -136,7 +154,7 @@
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| SLASH | `/회의 시작` | 회의 시작 메시지 생성 후 스레드 생성 | **Options:**<br>- `채널` (TextChannel, required) | 지정 채널에 회의 시작 임베드 게시 후 `YYYY-MM-DD 회의` 스레드 생성 | ADMIN_ROLE 또는 (admin_role_id 미설정 시) Manage Server/Administrator |
+| SLASH | `/회의 시작` | 회의 시작 메시지 생성 후 스레드 생성 | **Options:**<br>- `채널` (TextChannel, required) | 지정 채널에 회의 시작 임베드 게시 후 `YYYY-MM-DD 회의` 스레드 생성 | ADMIN_ROLE 또는 MEETING_OPENER_ROLE 또는 (admin_role_id 미설정 시) Manage Server/Administrator |
 | SLASH | `/회의 종료` | 회의 요약 생성 후 세션 종료/스레드 아카이브 | 없음 | 결정/액션아이템/핵심문장 요약 임베드 게시 후 종료 임베드/아카이브 처리 | ADMIN_ROLE 또는 (admin_role_id 미설정 시) Manage Server/Administrator |
 | SLASH | `/결정` | 진행 중 회의에 결정 항목을 구조화 기록 | **Options:**<br>- `내용` (String, required) | 회의 세션/스레드/항목ID와 함께 저장 완료 메시지 | ADMIN_ROLE 또는 (admin_role_id 미설정 시) Manage Server/Administrator |
 | SLASH | `/액션` | 진행 중 회의에 액션 항목을 구조화 기록 | **Options:**<br>- `내용` (String, required)<br>- `담당자` (User, optional)<br>- `기한` (String, optional, YYYY-MM-DD) | 회의 세션/스레드/항목ID와 함께 저장 완료 메시지 | ADMIN_ROLE 또는 (admin_role_id 미설정 시) Manage Server/Administrator |
@@ -146,6 +164,7 @@
 
 ### 회의 시작 처리 규칙
 - `/회의 시작`은 지정 채널에 "회의 시작" 임베드를 먼저 게시하고, 그 메시지에서 스레드를 생성한다.
+- 홈 버튼(`dash/home`)에서 시작할 때는 `meeting_board_channel_id`를 우선 사용한다.
 - 회의 세션 생성 시점에 오늘 안건이 존재하면 `meeting_sessions.agenda_link_id`로 연결 저장한다.
 - 안건 등록/조회는 `/안건 생성`, `/안건 오늘` 명령으로 일원화한다.
 - 대시보드 버튼 `dash:meeting_start`는 동일한 회의 시작 로직을 호출한다.
@@ -185,6 +204,7 @@
 ## MogakcoCommand
 
 ### 기간(period) 정의
+- `day`: 오늘 00:00 ~ 내일 00:00 (Asia/Seoul), 측정은 현재 시각까지
 - `week`: 이번 주 월요일 00:00 ~ 다음 주 월요일 00:00 (Asia/Seoul)
 - `month`: 이번 달 1일 00:00 ~ 다음 달 1일 00:00 (Asia/Seoul)
 
@@ -198,8 +218,13 @@
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| SLASH | `/모각코 랭킹` | 기간별 누적시간 TOP N 랭킹 조회 | **Options:**<br>- `기간` (Enum, required): week/month<br>- `인원` (Int, optional, default: 10) | 순위(멘션) + 누적시간(HH:MM), 데이터 없으면 "기록이 없습니다." | ANY |
-| SLASH | `/모각코 내정보` | 내 기간별 누적시간/참여일/참여율 조회 | **Options:**<br>- `기간` (Enum, required): week/month | 내 통계 출력(권장: ephemeral) | ANY |
+| SLASH | `/모각코 랭킹` | 기간별 누적시간 TOP N 랭킹 조회 | **Options:**<br>- `기간` (Enum, required): day/week/month<br>- `인원` (Int, optional, default: 10) | 순위(멘션) + 누적시간(HH:MM), 데이터 없으면 "기록이 없습니다." | ANY |
+| SLASH | `/모각코 내정보` | 내 기간별 누적시간/참여일/참여율 조회 | **Options:**<br>- `기간` (Enum, required): day/week/month | 내 통계 출력(권장: ephemeral) | ANY |
+| SLASH | `/모각코 오늘` | 오늘 모각코 출석/1시간 목표 진행률 빠른 조회 | 없음 | 오늘 누적시간, 출석 기준 잔여시간, 1시간 목표 잔여시간 출력(ephemeral 권장) | ANY |
+
+### 모각코 공지 채널 규칙
+- `mogakco_board_channel_id`가 설정된 경우, `/모각코 랭킹` 결과는 해당 채널에 게시한다.
+- 실행 채널에는 게시 완료 안내(ephemeral)를 반환한다.
 
 ---
 
@@ -209,6 +234,7 @@
 - `remind_at`은 과거 시각을 허용하지 않는다. (`remind_at <= nowUtc` 입력은 거부)
 - `due_at`은 현재 시각보다 미래여야 하며, `remind_at`보다 같거나 늦어야 한다.
 - 과제 확인 링크(`verify_url`)는 `http/https`만 허용한다.
+- `채널` 미입력 시 `default_task_channel_id`를 우선 사용하고, 없으면 명령 실행 채널을 사용한다.
 - 임박 알림 시간은 `임박알림옵션`(프리셋) 또는 `임박알림`(직접입력)으로 설정한다.
 - `임박알림` 직접입력은 쉼표 구분 정수(`24,3,1`) 형식이다. 비우면 기본값 `24,3,1`을 사용한다.
 - 마감 메시지(`마감메시지`)는 500자 이하여야 한다.
@@ -276,6 +302,16 @@
 | SLASH | `/설정 운영진역할` | 운영진 역할 ID를 길드 설정에 저장 | **Options:**<br>- `역할` (Role, required) | 설정 완료 메시지 (ephemeral) | ADMIN_ROLE 또는 Manage Server/Administrator |
 | SLASH | `/설정 운영진해제` | 운영진 역할 설정을 해제(`admin_role_id = null`) | 없음 | 해제 완료 메시지 (ephemeral) | ADMIN_ROLE 또는 Manage Server/Administrator |
 | SLASH | `/설정 운영진조회` | 현재 운영진 역할 설정 조회 | 없음 | 현재 운영진 역할 정보 출력. 미설정 시 설정 가이드 안내(권장: ephemeral) | ANY |
+| SLASH | `/설정 회의열기역할` | 회의 시작 권한 역할 ID를 길드 설정에 저장 | **Options:**<br>- `역할` (Role, required) | 설정 완료 메시지 (ephemeral) | ADMIN_ROLE 또는 Manage Server/Administrator |
+| SLASH | `/설정 회의열기해제` | 회의 시작 권한 역할 설정 해제(`meeting_opener_role_id = null`) | 없음 | 해제 완료 메시지 (ephemeral) | ADMIN_ROLE 또는 Manage Server/Administrator |
+| SLASH | `/설정 회의열기조회` | 현재 회의 시작 권한 역할 조회 | 없음 | 현재 역할 정보 출력. 미설정 시 설정 가이드 안내(권장: ephemeral) | ANY |
+| SLASH | `/설정 회의채널` | 회의 공지 채널 ID 저장 | **Options:**<br>- `채널` (Text/News, required) | 설정 완료 메시지 (ephemeral) | ADMIN_ROLE 또는 Manage Server/Administrator |
+| SLASH | `/설정 회의채널해제` | 회의 공지 채널 설정 해제(`meeting_board_channel_id = null`) | 없음 | 해제 완료 메시지 (ephemeral) | ADMIN_ROLE 또는 Manage Server/Administrator |
+| SLASH | `/설정 모각코채널` | 모각코 랭킹 공지 채널 ID 저장 | **Options:**<br>- `채널` (Text/News, required) | 설정 완료 메시지 (ephemeral) | ADMIN_ROLE 또는 Manage Server/Administrator |
+| SLASH | `/설정 모각코채널해제` | 모각코 랭킹 공지 채널 설정 해제(`mogakco_board_channel_id = null`) | 없음 | 해제 완료 메시지 (ephemeral) | ADMIN_ROLE 또는 Manage Server/Administrator |
+| SLASH | `/설정 과제공지채널` | 과제 공지 채널 저장(`default_task_channel_id` 재사용) | **Options:**<br>- `채널` (Text/News, required) | 설정 완료 메시지 (ephemeral) | ADMIN_ROLE 또는 Manage Server/Administrator |
+| SLASH | `/설정 과제공지해제` | 과제 공지 채널 설정 해제(`default_task_channel_id = null`) | 없음 | 해제 완료 메시지 (ephemeral) | ADMIN_ROLE 또는 Manage Server/Administrator |
+| SLASH | `/설정 채널조회` | 회의/모각코/과제 공지 채널 조회 | 없음 | 채널 설정 현황 출력(ephemeral 권장) | ANY |
 
 ---
 
@@ -304,9 +340,12 @@
 - `guild_id` (PK)
 - `timezone` (VARCHAR(64), 기본: Asia/Seoul)
 - `admin_role_id` (BIGINT, nullable)
+- `meeting_opener_role_id` (BIGINT, nullable)
 - `mogakco_active_minutes` (기본: 30)
 - `dashboard_channel_id` (BIGINT, nullable)
 - `dashboard_message_id` (BIGINT, nullable)
+- `meeting_board_channel_id` (BIGINT, nullable)
+- `mogakco_board_channel_id` (BIGINT, nullable)
 - `default_task_channel_id` (BIGINT, nullable)
 - `default_notify_role_id` (BIGINT, nullable)
 

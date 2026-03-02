@@ -1,6 +1,8 @@
 package com.aandi.A_AND_I_DISCORD_BOT.agenda.handler
 
+import com.aandi.A_AND_I_DISCORD_BOT.admin.service.GuildConfigService
 import com.aandi.A_AND_I_DISCORD_BOT.agenda.service.AgendaService
+import com.aandi.A_AND_I_DISCORD_BOT.common.auth.HomeChannelGuard
 import com.aandi.A_AND_I_DISCORD_BOT.common.error.DiscordErrorCode
 import com.aandi.A_AND_I_DISCORD_BOT.common.error.DiscordErrorFormatter
 import com.aandi.A_AND_I_DISCORD_BOT.common.error.DiscordErrorResponse
@@ -16,6 +18,8 @@ import java.awt.Color
 @Component
 class AgendaSlashCommandHandler(
     private val agendaService: AgendaService,
+    private val guildConfigService: GuildConfigService,
+    private val homeChannelGuard: HomeChannelGuard,
 ) : ListenerAdapter() {
 
     override fun onSlashCommandInteraction(event: SlashCommandInteractionEvent) {
@@ -44,6 +48,9 @@ class AgendaSlashCommandHandler(
         val member = event.member
         if (guild == null || member == null) {
             replyGuildOnlyError(event)
+            return
+        }
+        if (isBlockedByHomeChannelGuard(event, guild.idLong)) {
             return
         }
 
@@ -92,6 +99,9 @@ class AgendaSlashCommandHandler(
             replyGuildOnlyError(event)
             return
         }
+        if (isBlockedByHomeChannelGuard(event, guild.idLong)) {
+            return
+        }
 
         val agenda = agendaService.getTodayAgenda(guild.idLong)
         if (agenda == null) {
@@ -115,6 +125,9 @@ class AgendaSlashCommandHandler(
         val guild = event.guild
         if (guild == null) {
             replyGuildOnlyError(event)
+            return
+        }
+        if (isBlockedByHomeChannelGuard(event, guild.idLong)) {
             return
         }
 
@@ -166,6 +179,24 @@ class AgendaSlashCommandHandler(
         ko: String,
         en: String,
     ): Boolean = event.subcommandName == ko || event.subcommandName == en
+
+    private fun isBlockedByHomeChannelGuard(event: SlashCommandInteractionEvent, guildId: Long): Boolean {
+        val meetingChannelId = guildConfigService.getBoardChannels(guildId).meetingChannelId
+        val guardResult = homeChannelGuard.validate(
+            guildId = guildId,
+            currentChannelId = event.channel.idLong,
+            featureChannelId = meetingChannelId,
+            featureName = "회의",
+            setupCommand = "/설정 회의채널 채널:#회의",
+            usageCommand = "/안건 오늘",
+        )
+        if (guardResult is HomeChannelGuard.GuardResult.Allowed) {
+            return false
+        }
+        val blocked = guardResult as HomeChannelGuard.GuardResult.Blocked
+        replyInvalidInputError(event, blocked.message, true)
+        return true
+    }
 
     private fun replyGuildOnlyError(event: SlashCommandInteractionEvent) {
         replyInvalidInputError(event, "길드에서만 사용할 수 있습니다.", true)
