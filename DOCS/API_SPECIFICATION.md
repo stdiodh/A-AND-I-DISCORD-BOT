@@ -138,14 +138,13 @@
 |--------|-----|----------|---------|----------|------|
 | SLASH | `/회의 시작` | 회의 시작 메시지 생성 후 스레드 생성 | **Options:**<br>- `채널` (TextChannel, required) | 지정 채널에 회의 시작 임베드 게시 후 `YYYY-MM-DD 회의` 스레드 생성 | ADMIN_ROLE 또는 (admin_role_id 미설정 시) Manage Server/Administrator |
 | SLASH | `/회의 종료` | 회의 요약 생성 후 세션 종료/스레드 아카이브 | 없음 | 결정/액션아이템/핵심문장 요약 임베드 게시 후 종료 임베드/아카이브 처리 | ADMIN_ROLE 또는 (admin_role_id 미설정 시) Manage Server/Administrator |
-| SLASH | `/회의 안건등록` | 오늘 회의 안건 링크 등록/수정 | **Options:**<br>- `링크` (String, required): http/https 링크<br>- `제목` (String, optional) | 등록 성공 메시지 + 링크 버튼 | ADMIN_ROLE |
-| SLASH | `/회의 안건조회` | 오늘 회의 안건 링크 조회 | 없음 | 등록된 링크 안내 + 링크 버튼 (없으면 미등록 안내) | ANY |
 | SLASH | `/결정` | 진행 중 회의에 결정 항목을 구조화 기록 | **Options:**<br>- `내용` (String, required) | 회의 세션/스레드/항목ID와 함께 저장 완료 메시지 | ADMIN_ROLE 또는 (admin_role_id 미설정 시) Manage Server/Administrator |
 | SLASH | `/액션` | 진행 중 회의에 액션 항목을 구조화 기록 | **Options:**<br>- `내용` (String, required)<br>- `담당자` (User, optional)<br>- `기한` (String, optional, YYYY-MM-DD) | 회의 세션/스레드/항목ID와 함께 저장 완료 메시지 | ADMIN_ROLE 또는 (admin_role_id 미설정 시) Manage Server/Administrator |
 
 ### 회의 시작 처리 규칙
 - `/회의 시작`은 지정 채널에 "회의 시작" 임베드를 먼저 게시하고, 그 메시지에서 스레드를 생성한다.
 - 회의 세션 생성 시점에 오늘 안건이 존재하면 `meeting_sessions.agenda_link_id`로 연결 저장한다.
+- 안건 등록/조회는 `/안건 생성`, `/안건 오늘` 명령으로 일원화한다.
 - 대시보드 버튼 `dash:meeting_start`는 동일한 회의 시작 로직을 호출한다.
 - `dash:meeting_start` 경로는 대시보드 채널(설정 시) 또는 현재 채널을 사용한다.
 - 오늘 안건이 있으면 스레드 첫 메시지에 링크 버튼(`오늘 안건 링크`)을 포함한다.
