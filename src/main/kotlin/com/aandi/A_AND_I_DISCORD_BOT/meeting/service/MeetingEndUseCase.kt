@@ -337,10 +337,14 @@ class MeetingEndUseCase(
             structured = structuredItems.actions,
             extracted = extracted.actionItems,
         )
+        val todoMerge = mergeStructuredAndExtracted(
+            structured = structuredItems.todos,
+            extracted = extracted.todos,
+        )
         val mergedSummary = MeetingSummaryExtractor.MeetingSummary(
             decisions = decisionMerge.merged,
             actionItems = actionMerge.merged,
-            todos = extracted.todos,
+            todos = todoMerge.merged,
             highlights = extracted.highlights,
         )
 
@@ -357,6 +361,8 @@ class MeetingEndUseCase(
             extractedDecisions = decisionMerge.extractedOnly,
             structuredActions = actionMerge.structured,
             extractedActions = actionMerge.extractedOnly,
+            structuredTodos = todoMerge.structured,
+            extractedTodos = todoMerge.extractedOnly,
         )
         val artifact = meetingSummaryArtifactService.saveGeneratedArtifact(
             meetingSessionId = sessionId,
@@ -382,6 +388,7 @@ class MeetingEndUseCase(
                 "participantCount" to collected.participantCount,
                 "structuredDecisionCount" to decisionMerge.structured.size,
                 "structuredActionCount" to actionMerge.structured.size,
+                "structuredTodoCount" to todoMerge.structured.size,
                 "summaryMessageId" to summaryMessage.idLong,
                 "summaryArtifactId" to artifact.id,
                 "durationMs" to (System.currentTimeMillis() - summaryStartedAtMillis),

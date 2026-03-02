@@ -65,9 +65,9 @@ class MogakcoSlashCommandHandler(
             return
         }
 
-        val channel = event.getOption(OPTION_CHANNEL_KO)?.asChannel ?: event.getOption(OPTION_CHANNEL_EN)?.asChannel
+        val channel = resolveChannelOption(event)
         if (channel == null) {
-            replyInvalidInputError(event, "음성채널 옵션이 필요합니다.")
+            replyInvalidInputError(event, "채널 옵션이 필요합니다.")
             return
         }
 
@@ -111,9 +111,9 @@ class MogakcoSlashCommandHandler(
             return
         }
 
-        val channel = event.getOption(OPTION_CHANNEL_KO)?.asChannel ?: event.getOption(OPTION_CHANNEL_EN)?.asChannel
+        val channel = resolveChannelOption(event)
         if (channel == null) {
-            replyInvalidInputError(event, "음성채널 옵션이 필요합니다.")
+            replyInvalidInputError(event, "채널 옵션이 필요합니다.")
             return
         }
 
@@ -286,6 +286,11 @@ class MogakcoSlashCommandHandler(
         en: String,
     ): Boolean = event.subcommandGroup == ko || event.subcommandGroup == en
 
+    private fun resolveChannelOption(event: SlashCommandInteractionEvent) =
+        event.getOption(OPTION_CHANNEL_KO)?.asChannel
+            ?: event.getOption(OPTION_CHANNEL_LEGACY_KO)?.asChannel
+            ?: event.getOption(OPTION_CHANNEL_EN)?.asChannel
+
     private fun replyUnsupported(event: SlashCommandInteractionEvent) {
         replyInvalidInputError(event, "지원하지 않는 하위 명령입니다.")
     }
@@ -326,7 +331,8 @@ class MogakcoSlashCommandHandler(
         private const val SUBCOMMAND_LEADERBOARD_EN = "leaderboard"
         private const val SUBCOMMAND_ME_KO = "내정보"
         private const val SUBCOMMAND_ME_EN = "me"
-        private const val OPTION_CHANNEL_KO = "음성채널"
+        private const val OPTION_CHANNEL_KO = "채널"
+        private const val OPTION_CHANNEL_LEGACY_KO = "음성채널"
         private const val OPTION_CHANNEL_EN = "channel"
         private const val OPTION_PERIOD_KO = "기간"
         private const val OPTION_PERIOD_EN = "period"

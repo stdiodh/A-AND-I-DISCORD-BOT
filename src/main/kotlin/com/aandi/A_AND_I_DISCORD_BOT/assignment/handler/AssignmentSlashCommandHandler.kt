@@ -64,26 +64,26 @@ class AssignmentSlashCommandHandler(
 
         val title = event.getOption(OPTION_TITLE_KO)?.asString
         val link = event.getOption(OPTION_LINK_KO)?.asString
-        val remindAtRaw = event.getOption(OPTION_REMIND_AT_KO)?.asString
-        val dueAtRaw = event.getOption(OPTION_DUE_AT_KO)?.asString
+        val remindAtRaw = resolveRemindAtOption(event)
+        val dueAtRaw = resolveDueAtOption(event)
         if (title.isNullOrBlank() || link.isNullOrBlank() || remindAtRaw.isNullOrBlank() || dueAtRaw.isNullOrBlank()) {
-            replyInvalidInputError(event, "제목/링크/알림시각/마감시각은 필수입니다.", true)
+            replyInvalidInputError(event, "제목/링크/알림/마감은 필수입니다.", true)
             return
         }
 
         val remindAtUtc = runCatching { KstTime.parseKstToInstant(remindAtRaw) }.getOrElse {
-            replyInvalidInputError(event, "알림시각 형식이 올바르지 않습니다. 예: 2026-03-01 21:30", true)
+            replyInvalidInputError(event, "알림 형식이 올바르지 않습니다. 예: 2026-03-01 21:30", true)
             return
         }
         val dueAtUtc = runCatching { KstTime.parseKstToInstant(dueAtRaw) }.getOrElse {
-            replyInvalidInputError(event, "마감시각 형식이 올바르지 않습니다. 예: 2026-03-02 23:59", true)
+            replyInvalidInputError(event, "마감 형식이 올바르지 않습니다. 예: 2026-03-02 23:59", true)
             return
         }
 
         val channelId = event.getOption(OPTION_CHANNEL_KO)?.asChannel?.idLong ?: event.channel.idLong
-        val notifyRoleId = event.getOption(OPTION_NOTIFY_ROLE_KO)?.asRole?.idLong
-        val preReminderHoursRaw = event.getOption(OPTION_PRE_REMIND_KO)?.asString
-        val closingMessageRaw = event.getOption(OPTION_CLOSING_MESSAGE_KO)?.asString
+        val notifyRoleId = resolveNotifyRoleOption(event)?.idLong
+        val preReminderHoursRaw = resolvePreReminderOption(event)
+        val closingMessageRaw = resolveClosingMessageOption(event)
 
         val result = assignmentTaskService.create(
             guildId = guild.idLong,
@@ -105,7 +105,7 @@ class AssignmentSlashCommandHandler(
                 val roleDisplay = task.notifyRoleId?.let { "<@&$it>" } ?: "없음"
                 val preHours = task.preRemindHours.sortedDescending().joinToString(",")
                 event.reply(
-                    "과제를 등록했습니다.\nID: `${task.id}`\n알림시각(KST): `${KstTime.formatInstantToKst(task.remindAt)}`\n마감시각(KST): `${KstTime.formatInstantToKst(task.dueAt)}`\n알림역할: $roleDisplay\n임박알림(시간): `$preHours`",
+                    "과제를 등록했습니다.\nID: `${task.id}`\n알림(KST): `${KstTime.formatInstantToKst(task.remindAt)}`\n마감(KST): `${KstTime.formatInstantToKst(task.dueAt)}`\n역할: $roleDisplay\n임박알림(시간): `$preHours`",
                 )
                     .setEphemeral(true)
                     .queue()
@@ -120,15 +120,15 @@ class AssignmentSlashCommandHandler(
             }
 
             AssignmentTaskService.CreateResult.RemindAtMustBeFuture -> {
-                replyInvalidInputError(event, "알림시각은 현재보다 미래여야 합니다.", true)
+                replyInvalidInputError(event, "알림은 현재보다 미래여야 합니다.", true)
             }
 
             AssignmentTaskService.CreateResult.DueAtMustBeFuture -> {
-                replyInvalidInputError(event, "마감시각은 현재보다 미래여야 합니다.", true)
+                replyInvalidInputError(event, "마감은 현재보다 미래여야 합니다.", true)
             }
 
             AssignmentTaskService.CreateResult.DueAtMustBeAfterRemindAt -> {
-                replyInvalidInputError(event, "마감시각은 알림시각 이후여야 합니다.", true)
+                replyInvalidInputError(event, "마감은 알림 이후여야 합니다.", true)
             }
 
             AssignmentTaskService.CreateResult.InvalidPreReminderHours -> {
@@ -136,7 +136,7 @@ class AssignmentSlashCommandHandler(
             }
 
             AssignmentTaskService.CreateResult.InvalidClosingMessage -> {
-                replyInvalidInputError(event, "종료메시지는 500자 이하여야 합니다.", true)
+                replyInvalidInputError(event, "마감메시지는 500자 이하여야 합니다.", true)
             }
         }
     }
@@ -186,9 +186,9 @@ class AssignmentSlashCommandHandler(
             return
         }
 
-        val taskId = event.getOption(OPTION_TASK_ID_KO)?.asLong
+        val taskId = resolveTaskIdOption(event)
         if (taskId == null) {
-            replyInvalidInputError(event, "과제아이디 옵션이 필요합니다.", true)
+            replyInvalidInputError(event, "아이디 옵션이 필요합니다.", true)
             return
         }
 
@@ -207,11 +207,11 @@ class AssignmentSlashCommandHandler(
             appendLine("- ID: ${task.id}")
             appendLine("- 상태: ${statusLabel(task.status)}")
             appendLine("- 제목: ${task.title}")
-            appendLine("- 알림시각(KST): ${KstTime.formatInstantToKst(task.remindAt)}")
-            appendLine("- 마감시각(KST): ${KstTime.formatInstantToKst(task.dueAt)}")
-            appendLine("- 알림역할: $roleDisplay")
+            appendLine("- 알림(KST): ${KstTime.formatInstantToKst(task.remindAt)}")
+            appendLine("- 마감(KST): ${KstTime.formatInstantToKst(task.dueAt)}")
+            appendLine("- 역할: $roleDisplay")
             appendLine("- 임박알림(시간): $preHours")
-            appendLine("- 종료메시지: $closingMessage")
+            appendLine("- 마감메시지: $closingMessage")
             appendLine("- 등록자: <@${task.createdBy}>")
             append("- 링크: ${task.verifyUrl}")
         }
@@ -231,9 +231,9 @@ class AssignmentSlashCommandHandler(
             return
         }
 
-        val taskId = event.getOption(OPTION_TASK_ID_KO)?.asLong
+        val taskId = resolveTaskIdOption(event)
         if (taskId == null) {
-            replyInvalidInputError(event, "과제아이디 옵션이 필요합니다.", true)
+            replyInvalidInputError(event, "아이디 옵션이 필요합니다.", true)
             return
         }
 
@@ -259,9 +259,9 @@ class AssignmentSlashCommandHandler(
             return
         }
 
-        val taskId = event.getOption(OPTION_TASK_ID_KO)?.asLong
+        val taskId = resolveTaskIdOption(event)
         if (taskId == null) {
-            replyInvalidInputError(event, "과제아이디 옵션이 필요합니다.", true)
+            replyInvalidInputError(event, "아이디 옵션이 필요합니다.", true)
             return
         }
 
@@ -282,7 +282,7 @@ class AssignmentSlashCommandHandler(
         }
         val configuredRole = guildConfigService.getAdminRole(guildId)
         if (configuredRole == null) {
-            replyAccessDeniedError(event, "운영진 역할이 아직 설정되지 않았습니다. `/설정 운영진역할`에서 `대상역할`을 선택해 먼저 설정해 주세요.")
+            replyAccessDeniedError(event, "운영진 역할이 아직 설정되지 않았습니다. `/설정 운영진역할`에서 `역할`을 선택해 먼저 설정해 주세요.")
             return false
         }
         replyAccessDeniedError(event, "이 명령은 운영진만 사용할 수 있습니다.")
@@ -308,6 +308,44 @@ class AssignmentSlashCommandHandler(
         ko: String,
         en: String,
     ): Boolean = event.subcommandName == ko || event.subcommandName == en
+
+    private fun resolveRemindAtOption(event: SlashCommandInteractionEvent): String? {
+        return event.getOption(OPTION_REMIND_AT_KO)?.asString
+            ?: event.getOption(OPTION_REMIND_AT_LEGACY_KO)?.asString
+            ?: event.getOption(OPTION_REMIND_AT_EN)?.asString
+    }
+
+    private fun resolveDueAtOption(event: SlashCommandInteractionEvent): String? {
+        return event.getOption(OPTION_DUE_AT_KO)?.asString
+            ?: event.getOption(OPTION_DUE_AT_LEGACY_KO)?.asString
+            ?: event.getOption(OPTION_DUE_AT_EN)?.asString
+    }
+
+    private fun resolveNotifyRoleOption(event: SlashCommandInteractionEvent) =
+        event.getOption(OPTION_NOTIFY_ROLE_KO)?.asRole
+            ?: event.getOption(OPTION_NOTIFY_ROLE_LEGACY_KO)?.asRole
+            ?: event.getOption(OPTION_NOTIFY_ROLE_EN)?.asRole
+
+    private fun resolvePreReminderOption(event: SlashCommandInteractionEvent): String? {
+        val custom = event.getOption(OPTION_PRE_REMIND_CUSTOM_KO)?.asString
+            ?: event.getOption(OPTION_PRE_REMIND_EN)?.asString
+        if (!custom.isNullOrBlank()) {
+            return custom
+        }
+        return event.getOption(OPTION_PRE_REMIND_PRESET_KO)?.asString
+    }
+
+    private fun resolveClosingMessageOption(event: SlashCommandInteractionEvent): String? {
+        return event.getOption(OPTION_CLOSING_MESSAGE_KO)?.asString
+            ?: event.getOption(OPTION_CLOSING_MESSAGE_LEGACY_KO)?.asString
+            ?: event.getOption(OPTION_CLOSING_MESSAGE_EN)?.asString
+    }
+
+    private fun resolveTaskIdOption(event: SlashCommandInteractionEvent): Long? {
+        return event.getOption(OPTION_ID_KO)?.asLong
+            ?: event.getOption(OPTION_TASK_ID_KO_LEGACY)?.asLong
+            ?: event.getOption(OPTION_TASK_ID_EN)?.asLong
+    }
 
     private fun replyInvalidInputError(event: SlashCommandInteractionEvent, message: String, ephemeral: Boolean) {
         replyError(
@@ -369,13 +407,25 @@ class AssignmentSlashCommandHandler(
         private const val SUBCOMMAND_DELETE_EN = "delete"
         private const val OPTION_TITLE_KO = "제목"
         private const val OPTION_LINK_KO = "링크"
-        private const val OPTION_REMIND_AT_KO = "알림시각"
-        private const val OPTION_DUE_AT_KO = "마감시각"
+        private const val OPTION_REMIND_AT_KO = "알림"
+        private const val OPTION_REMIND_AT_LEGACY_KO = "알림시각"
+        private const val OPTION_REMIND_AT_EN = "remindAt"
+        private const val OPTION_DUE_AT_KO = "마감"
+        private const val OPTION_DUE_AT_LEGACY_KO = "마감시각"
+        private const val OPTION_DUE_AT_EN = "dueAt"
         private const val OPTION_CHANNEL_KO = "채널"
-        private const val OPTION_NOTIFY_ROLE_KO = "알림역할"
-        private const val OPTION_PRE_REMIND_KO = "임박알림"
-        private const val OPTION_CLOSING_MESSAGE_KO = "종료메시지"
+        private const val OPTION_NOTIFY_ROLE_KO = "역할"
+        private const val OPTION_NOTIFY_ROLE_LEGACY_KO = "알림역할"
+        private const val OPTION_NOTIFY_ROLE_EN = "role"
+        private const val OPTION_PRE_REMIND_PRESET_KO = "임박알림옵션"
+        private const val OPTION_PRE_REMIND_CUSTOM_KO = "임박알림"
+        private const val OPTION_PRE_REMIND_EN = "preReminder"
+        private const val OPTION_CLOSING_MESSAGE_KO = "마감메시지"
+        private const val OPTION_CLOSING_MESSAGE_LEGACY_KO = "종료메시지"
+        private const val OPTION_CLOSING_MESSAGE_EN = "closingMessage"
         private const val OPTION_STATUS_KO = "상태"
-        private const val OPTION_TASK_ID_KO = "과제아이디"
+        private const val OPTION_ID_KO = "아이디"
+        private const val OPTION_TASK_ID_KO_LEGACY = "과제아이디"
+        private const val OPTION_TASK_ID_EN = "taskId"
     }
 }

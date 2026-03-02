@@ -125,6 +125,47 @@ class MeetingService(
         )
     }
 
+    @Transactional
+    fun captureTodo(
+        guildId: Long,
+        requestedBy: Long,
+        fallbackThreadId: Long?,
+        content: String,
+    ): StructuredCaptureResult {
+        return meetingStructuredCaptureUseCase.captureTodo(
+            guildId = guildId,
+            requestedBy = requestedBy,
+            fallbackThreadId = fallbackThreadId,
+            content = content,
+        )
+    }
+
+    @Transactional(readOnly = true)
+    fun listStructuredItems(
+        guildId: Long,
+        fallbackThreadId: Long?,
+    ): StructuredListResult {
+        return meetingStructuredCaptureUseCase.listItems(
+            guildId = guildId,
+            fallbackThreadId = fallbackThreadId,
+        )
+    }
+
+    @Transactional
+    fun cancelStructuredItem(
+        guildId: Long,
+        requestedBy: Long,
+        fallbackThreadId: Long?,
+        itemId: Long,
+    ): StructuredCancelResult {
+        return meetingStructuredCaptureUseCase.cancelItem(
+            guildId = guildId,
+            requestedBy = requestedBy,
+            fallbackThreadId = fallbackThreadId,
+            itemId = itemId,
+        )
+    }
+
     sealed interface StartResult {
         data class Success(
             val sessionId: Long,
@@ -200,8 +241,40 @@ class MeetingService(
         data class ThreadNotFound(val threadId: Long) : StructuredCaptureResult
     }
 
+    sealed interface StructuredListResult {
+        data class Success(
+            val sessionId: Long,
+            val threadId: Long,
+            val items: List<StructuredItemView>,
+        ) : StructuredListResult
+
+        data object SessionNotFound : StructuredListResult
+        data object MeetingNotActive : StructuredListResult
+        data class ThreadNotFound(val threadId: Long) : StructuredListResult
+    }
+
+    sealed interface StructuredCancelResult {
+        data class Success(
+            val sessionId: Long,
+            val threadId: Long,
+            val item: StructuredItemView,
+        ) : StructuredCancelResult
+
+        data object SessionNotFound : StructuredCancelResult
+        data object MeetingNotActive : StructuredCancelResult
+        data class ThreadNotFound(val threadId: Long) : StructuredCancelResult
+        data object ItemNotFound : StructuredCancelResult
+    }
+
     enum class StructuredCaptureType {
         DECISION,
         ACTION,
+        TODO,
     }
+
+    data class StructuredItemView(
+        val id: Long,
+        val type: StructuredCaptureType,
+        val summary: String,
+    )
 }
