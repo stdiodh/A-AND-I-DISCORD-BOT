@@ -51,6 +51,9 @@ SPRING_DATASOURCE_PASSWORD=postgres
 
 선택 환경변수:
 - `DISCORD_GUILD_ID` (있으면 길드 커맨드, 없으면 글로벌 커맨드 등록)
+- `FEATURE_HOME_V2` (기본 `false`, 홈 채널 이동 UI 활성화)
+- `FEATURE_MEETING_SUMMARY_V2` (기본 `true`)
+- `FEATURE_TASK_QUICKREGISTER_V2` (기본 `false`)
 
 2. PostgreSQL 실행
 

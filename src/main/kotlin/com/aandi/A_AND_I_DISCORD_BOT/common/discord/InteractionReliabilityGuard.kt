@@ -13,7 +13,6 @@ import net.dv8tion.jda.api.interactions.callbacks.IReplyCallback
 import net.dv8tion.jda.api.requests.restaction.interactions.ReplyCallbackAction
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
-import java.util.concurrent.CompletableFuture
 
 @Component
 class InteractionReliabilityGuard {
@@ -282,15 +281,13 @@ class InteractionReliabilityGuard {
         onDeferred: (InteractionCtx) -> Unit,
         onFailure: ((InteractionCtx, Throwable) -> Unit)?,
     ) {
-        CompletableFuture.runAsync {
-            runCatching {
-                onDeferred(ctx)
-            }.onFailure { exception ->
-                onFailure?.invoke(ctx, exception) ?: safeFailureReply(
-                    ctx = ctx,
-                    alternativeCommandGuide = "`/홈 설치` 또는 `/회의 종료`를 다시 시도해 주세요.",
-                )
-            }
+        runCatching {
+            onDeferred(ctx)
+        }.onFailure { exception ->
+            onFailure?.invoke(ctx, exception) ?: safeFailureReply(
+                ctx = ctx,
+                alternativeCommandGuide = "`/홈 설치` 또는 `/회의 종료`를 다시 시도해 주세요.",
+            )
         }
     }
 
