@@ -35,6 +35,7 @@
 - `./gradlew test --tests "*VoiceSummary*"`
 - `./gradlew test --tests "*Assignment*"`
 - `./gradlew test --tests "*Mogakco*"`
+- `./gradlew test --tests "*InteractionReliabilityGuardTest*"`
 - `./gradlew test`
 
 ## DB 테스트 원칙
