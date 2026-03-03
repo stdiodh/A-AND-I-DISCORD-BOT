@@ -361,7 +361,7 @@ class MogakcoSlashCommandHandler(
         val clamped = rate.coerceIn(0.0, 1.0)
         val filled = (clamped * size).toInt()
         val empty = size - filled
-        return "▓".repeat(filled) + "░".repeat(empty)
+        return FILLED_BAR.repeat(filled) + EMPTY_BAR.repeat(empty)
     }
 
     private fun medalForIndex(index: Int): String = rankMedalMap[index] ?: "🏅"
@@ -422,6 +422,8 @@ class MogakcoSlashCommandHandler(
     }
 
     companion object {
+        private const val FILLED_BAR = "🟩"
+        private const val EMPTY_BAR = "⬜"
         private val rankMedalMap = mapOf(
             0 to "🥇",
             1 to "🥈",

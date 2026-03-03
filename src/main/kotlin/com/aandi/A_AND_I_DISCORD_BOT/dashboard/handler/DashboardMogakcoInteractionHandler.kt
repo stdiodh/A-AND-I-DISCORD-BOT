@@ -253,12 +253,14 @@ class DashboardMogakcoInteractionHandler(
         val clamped = value.coerceIn(0.0, 1.0)
         val filled = (clamped * size).toInt()
         val empty = size - filled
-        return "▓".repeat(filled) + "░".repeat(empty)
+        return FILLED_BAR.repeat(filled) + EMPTY_BAR.repeat(empty)
     }
 
     private fun medalForIndex(index: Int): String = rankMedalMap[index] ?: "🏅"
 
     companion object {
+        private const val FILLED_BAR = "🟩"
+        private const val EMPTY_BAR = "⬜"
         private val supportedPrefixes = setOf("dash", "mogakco", "home")
         private val rankMedalMap = mapOf(
             0 to "🥇",
