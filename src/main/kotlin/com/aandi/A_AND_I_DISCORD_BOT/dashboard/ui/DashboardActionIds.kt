@@ -22,4 +22,7 @@ object DashboardActionIds {
     const val MOGAKCO_ME_SELECT = "mogakco:me_select"
 
     const val HOME_PIN_RECHECK = "home:pin:recheck"
+    const val HOME_MEETING_MOVE_UNSET = "home:meeting:unset"
+    const val HOME_ASSIGNMENT_MOVE_UNSET = "home:assignment:unset"
+    const val HOME_MOGAKCO_MOVE_UNSET = "home:mogakco:unset"
 }
