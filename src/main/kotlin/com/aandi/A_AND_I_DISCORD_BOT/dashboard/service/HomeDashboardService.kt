@@ -9,6 +9,7 @@ import com.aandi.A_AND_I_DISCORD_BOT.common.log.StructuredLog
 import com.aandi.A_AND_I_DISCORD_BOT.common.time.KstTime
 import com.aandi.A_AND_I_DISCORD_BOT.common.time.PeriodType
 import com.aandi.A_AND_I_DISCORD_BOT.dashboard.ui.DashboardActionIds
+import com.aandi.A_AND_I_DISCORD_BOT.dashboard.ui.HomeDashboardComponentBuilder
 import com.aandi.A_AND_I_DISCORD_BOT.dashboard.ui.DashboardRenderer
 import com.aandi.A_AND_I_DISCORD_BOT.meeting.entity.MeetingSessionStatus
 import com.aandi.A_AND_I_DISCORD_BOT.meeting.repository.MeetingSessionRepository
@@ -18,7 +19,6 @@ import net.dv8tion.jda.api.JDA
 import net.dv8tion.jda.api.Permission
 import net.dv8tion.jda.api.components.actionrow.ActionRow
 import net.dv8tion.jda.api.components.buttons.Button
-import net.dv8tion.jda.api.components.selections.StringSelectMenu
 import net.dv8tion.jda.api.exceptions.ErrorResponseException
 import net.dv8tion.jda.api.requests.ErrorResponse
 import org.slf4j.LoggerFactory
@@ -41,6 +41,7 @@ class HomeDashboardService(
     private val meetingSessionRepository: MeetingSessionRepository,
     private val durationFormatter: DurationFormatter,
     private val renderer: DashboardRenderer,
+    private val homeDashboardComponentBuilder: HomeDashboardComponentBuilder,
     private val homeMessageManager: HomeMessageManager,
     private val featureFlags: FeatureFlagsProperties,
     private val clock: Clock,
@@ -308,44 +309,20 @@ class HomeDashboardService(
             return legacyComponents
         }
 
-        val meetingButton = resolveMeetingMoveButton(
+        return homeDashboardComponentBuilder.buildHomeV2Components(
             guildId = guildId,
-            meetingChannelId = boardChannels.meetingChannelId,
-        )
-        val assignmentButton = resolveAssignmentMoveButton(
-            guildId = guildId,
-            assignmentChannelId = boardChannels.assignmentChannelId,
-        )
-        val moreMenu = StringSelectMenu.create(DashboardActionIds.HOME_MORE_SELECT)
-            .setPlaceholder("더보기")
-            .addOption("안건 설정", HOME_MORE_AGENDA)
-            .addOption("과제 전체 보기", HOME_MORE_TASK_LIST)
-            .addOption("모각코 전체 보기", HOME_MORE_MOGAKCO_RANK)
-            .addOption("내 기록(개인)", HOME_MORE_MOGAKCO_ME)
-            .addOption("설정/도움말", HOME_MORE_SETTINGS_HELP)
-            .build()
-
-        val components = mutableListOf<ActionRow>()
-        components.add(
-            ActionRow.of(
-                meetingButton,
-                assignmentButton,
+            agendaUrl = agendaUrl,
+            channelTargets = HomeDashboardComponentBuilder.ChannelTargets(
+                meetingChannelId = boardChannels.meetingChannelId,
+                assignmentChannelId = boardChannels.assignmentChannelId,
+                mogakcoChannelId = boardChannels.mogakcoChannelId,
+            ),
+            moreMenuOptions = HomeDashboardComponentBuilder.MoreMenuOptions(
+                agendaValue = HOME_MORE_AGENDA,
+                mogakcoMeValue = HOME_MORE_MOGAKCO_ME,
+                settingsHelpValue = HOME_MORE_SETTINGS_HELP,
             ),
         )
-        components.add(ActionRow.of(moreMenu))
-
-        val linkButtons = mutableListOf<Button>()
-        boardChannels.mogakcoChannelId?.let { mogakcoChannelId ->
-            linkButtons.add(Button.link(channelJumpUrl(guildId, mogakcoChannelId), "모각코 채널 이동"))
-        }
-        agendaUrl?.let { url ->
-            linkButtons.add(Button.link(url, "오늘 안건 링크"))
-        }
-        if (linkButtons.isNotEmpty()) {
-            components.add(ActionRow.of(linkButtons))
-        }
-
-        return components
     }
 
     private fun resolveTaskSnapshot(guildId: Long): TaskSnapshot {
@@ -511,20 +488,6 @@ class HomeDashboardService(
         return overview
     }
 
-    private fun resolveMeetingMoveButton(guildId: Long, meetingChannelId: Long?): Button {
-        if (meetingChannelId != null) {
-            return Button.link(channelJumpUrl(guildId, meetingChannelId), "회의 채널 이동")
-        }
-        return Button.primary(DashboardActionIds.MEETING_START, "회의 시작")
-    }
-
-    private fun resolveAssignmentMoveButton(guildId: Long, assignmentChannelId: Long?): Button {
-        if (assignmentChannelId != null) {
-            return Button.link(channelJumpUrl(guildId, assignmentChannelId), "과제 채널 이동")
-        }
-        return Button.success(DashboardActionIds.ASSIGNMENT_CREATE, "과제 등록")
-    }
-
     private fun resolveDdayLabel(dayDiff: Int): String {
         if (dayDiff == 0) {
             return "D-DAY"
@@ -594,8 +557,6 @@ class HomeDashboardService(
         private val KST_ZONE_ID: ZoneId = ZoneId.of("Asia/Seoul")
         private const val PIN_STATUS_CHECKING = "홈 고정 상태: 🔄 고정 상태 확인 중...\n해결 방법: 잠시 후 결과가 자동 반영됩니다."
         const val HOME_MORE_AGENDA = "agenda_set"
-        const val HOME_MORE_TASK_LIST = "assignment_list"
-        const val HOME_MORE_MOGAKCO_RANK = "mogakco_rank"
         const val HOME_MORE_MOGAKCO_ME = "mogakco_me"
         const val HOME_MORE_SETTINGS_HELP = "settings_help"
     }
