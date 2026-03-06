@@ -140,7 +140,7 @@ class DashboardMogakcoInteractionHandler(
                 if (boardChannel == null) {
                     interactionReliabilityGuard.safeEditReply(
                         ctx,
-                        "모각코 공지 채널을 찾지 못했습니다. `/설정 모각코채널`을 다시 설정해 주세요.",
+                        "모각코 공지 채널을 찾지 못했습니다. `/설정 마법사 모각코채널:#모각코`로 다시 설정해 주세요.",
                     )
                     return@safeDefer
                 }

@@ -66,7 +66,7 @@ class HomeSlashCommandHandler(
                         onFailure = {
                             interactionReliabilityGuard.safeFailureReply(
                                 ctx = ctx,
-                                alternativeCommandGuide = "`/홈 생성` 또는 `/홈 설치`를 다시 시도해 주세요.",
+                                alternativeCommandGuide = "`/홈 설치`를 다시 시도해 주세요.",
                             )
                         },
                     )
@@ -75,7 +75,7 @@ class HomeSlashCommandHandler(
             onFailure = { ctx, _ ->
                 interactionReliabilityGuard.safeFailureReply(
                     ctx = ctx,
-                    alternativeCommandGuide = "`/홈 생성` 또는 `/홈 설치`를 다시 시도해 주세요.",
+                    alternativeCommandGuide = "`/홈 설치`를 다시 시도해 주세요.",
                 )
             },
         )
@@ -105,7 +105,7 @@ class HomeSlashCommandHandler(
                         onFailure = {
                             interactionReliabilityGuard.safeFailureReply(
                                 ctx = ctx,
-                                alternativeCommandGuide = "`/홈 갱신` 또는 `/홈 설치`를 다시 시도해 주세요.",
+                                alternativeCommandGuide = "`/홈 설치`를 다시 시도해 주세요.",
                             )
                         },
                     )
@@ -114,7 +114,7 @@ class HomeSlashCommandHandler(
             onFailure = { ctx, _ ->
                 interactionReliabilityGuard.safeFailureReply(
                     ctx = ctx,
-                    alternativeCommandGuide = "`/홈 갱신` 또는 `/홈 설치`를 다시 시도해 주세요.",
+                    alternativeCommandGuide = "`/홈 설치`를 다시 시도해 주세요.",
                 )
             },
         )

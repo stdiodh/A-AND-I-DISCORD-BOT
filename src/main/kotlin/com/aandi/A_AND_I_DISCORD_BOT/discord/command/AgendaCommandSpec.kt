@@ -15,7 +15,7 @@ class AgendaCommandSpec : DiscordCommandSpec {
         return listOf(
             Commands.slash("안건", "오늘 안건 링크 관리")
                 .addSubcommands(
-                    SubcommandData("생성", "오늘 안건 링크 등록/수정")
+                    SubcommandData("설정", "오늘 안건 링크 등록/수정")
                         .addOption(OptionType.STRING, "링크", "http/https 링크", true)
                         .addOption(OptionType.STRING, "제목", "안건 제목", false),
                     SubcommandData("오늘", "오늘 안건 링크 조회"),

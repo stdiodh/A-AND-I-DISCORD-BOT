@@ -9,6 +9,7 @@ import com.aandi.A_AND_I_DISCORD_BOT.mogakco.entity.MogakcoChannel
 import com.aandi.A_AND_I_DISCORD_BOT.mogakco.entity.MogakcoChannelId
 import com.aandi.A_AND_I_DISCORD_BOT.mogakco.entity.VoiceSession
 import com.aandi.A_AND_I_DISCORD_BOT.mogakco.repository.MogakcoChannelRepository
+import com.aandi.A_AND_I_DISCORD_BOT.mogakco.repository.VoiceSessionDailyRollupRepository
 import com.aandi.A_AND_I_DISCORD_BOT.mogakco.repository.VoiceSessionRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -22,6 +23,7 @@ class MogakcoService(
     private val guildConfigRepository: GuildConfigRepository,
     private val mogakcoChannelRepository: MogakcoChannelRepository,
     private val voiceSessionRepository: VoiceSessionRepository,
+    private val voiceSessionDailyRollupRepository: VoiceSessionDailyRollupRepository,
     private val periodCalculator: PeriodCalculator,
     private val permissionChecker: PermissionChecker,
     private val clock: Clock,
@@ -98,16 +100,7 @@ class MogakcoService(
         now: Instant,
     ): LeaderboardView {
         val window = periodCalculator.currentWindow(period, now)
-        val sessions = voiceSessionRepository.findSessionsInRange(guildId, window.startInclusive, window.measureEndExclusive)
-        val totalsByUser = mutableMapOf<Long, Long>()
-
-        sessions.forEach { session ->
-            val overlapped = overlapDurationSeconds(session, window)
-            if (overlapped <= 0) {
-                return@forEach
-            }
-            totalsByUser.merge(session.userId, overlapped, Long::plus)
-        }
+        val totalsByUser = collectTotalsByUser(guildId, window, now)
 
         val entries = totalsByUser.entries
             .sortedByDescending { it.value }
@@ -138,24 +131,61 @@ class MogakcoService(
         now: Instant,
     ): MyStatsView {
         val window = periodCalculator.currentWindow(period, now)
-        val sessions = voiceSessionRepository.findSessionsInRange(guildId, window.startInclusive, window.measureEndExclusive)
         var totalSeconds = 0L
         val dailySeconds = mutableMapOf<LocalDate, Long>()
+        val todayStart = now.atZone(periodCalculator.zoneId).toLocalDate()
+            .atStartOfDay(periodCalculator.zoneId)
+            .toInstant()
+        val historyEnd = minOf(todayStart, window.measureEndExclusive)
 
-        sessions.forEach { session ->
-            if (session.userId != userId) {
-                return@forEach
+        if (historyEnd.isAfter(window.startInclusive)) {
+            val historyStartDate = window.startInclusive.atZone(periodCalculator.zoneId).toLocalDate()
+            val historyEndDateExclusive = historyEnd.atZone(periodCalculator.zoneId).toLocalDate()
+            if (historyEndDateExclusive.isAfter(historyStartDate)) {
+                val dailyRollups = voiceSessionDailyRollupRepository.findUserDailyTotals(
+                    guildId = guildId,
+                    userId = userId,
+                    startDate = historyStartDate,
+                    endDateExclusive = historyEndDateExclusive,
+                )
+                dailyRollups.forEach { item ->
+                    totalSeconds += item.totalSeconds
+                    dailySeconds.merge(item.dateLocal, item.totalSeconds, Long::plus)
+                }
             }
-
-            val clipped = clipSession(session, window) ?: return@forEach
-            val duration = Duration.between(clipped.startInclusive, clipped.endExclusive).seconds
-            if (duration <= 0) {
-                return@forEach
-            }
-
-            totalSeconds += duration
-            accumulateDailySeconds(dailySeconds, clipped.startInclusive, clipped.endExclusive)
         }
+
+        val liveStart = maxOf(window.startInclusive, todayStart)
+        if (window.measureEndExclusive.isAfter(liveStart)) {
+            val closedLiveSessions = voiceSessionRepository.findClosedSessionsInRange(
+                guildId = guildId,
+                startInclusive = liveStart,
+                endExclusive = window.measureEndExclusive,
+            )
+            accumulateSessions(
+                sessions = closedLiveSessions,
+                window = window,
+                targetUserId = userId,
+                totalByUser = null,
+                totalRef = { totalSeconds },
+                updateTotal = { totalSeconds = it },
+                dailySeconds = dailySeconds,
+            )
+        }
+
+        val openSessions = voiceSessionRepository.findOpenSessionsInRange(
+            guildId = guildId,
+            endExclusive = window.measureEndExclusive,
+        )
+        accumulateSessions(
+            sessions = openSessions,
+            window = window,
+            targetUserId = userId,
+            totalByUser = null,
+            totalRef = { totalSeconds },
+            updateTotal = { totalSeconds = it },
+            dailySeconds = dailySeconds,
+        )
 
         val activeMinutes = resolveActiveMinutes(guildId)
         val activeSecondsThreshold = activeMinutes.toLong() * 60L
@@ -185,6 +215,95 @@ class MogakcoService(
     private fun overlapDurationSeconds(session: VoiceSession, window: PeriodWindow): Long {
         val clipped = clipSession(session, window) ?: return 0
         return Duration.between(clipped.startInclusive, clipped.endExclusive).seconds.coerceAtLeast(0)
+    }
+
+    private fun collectTotalsByUser(
+        guildId: Long,
+        window: PeriodWindow,
+        now: Instant,
+    ): MutableMap<Long, Long> {
+        val totalsByUser = mutableMapOf<Long, Long>()
+        val todayStart = now.atZone(periodCalculator.zoneId).toLocalDate()
+            .atStartOfDay(periodCalculator.zoneId)
+            .toInstant()
+        val historyEnd = minOf(todayStart, window.measureEndExclusive)
+
+        if (historyEnd.isAfter(window.startInclusive)) {
+            val historyStartDate = window.startInclusive.atZone(periodCalculator.zoneId).toLocalDate()
+            val historyEndDateExclusive = historyEnd.atZone(periodCalculator.zoneId).toLocalDate()
+            if (historyEndDateExclusive.isAfter(historyStartDate)) {
+                val rollups = voiceSessionDailyRollupRepository.aggregateUserTotals(
+                    guildId = guildId,
+                    startDate = historyStartDate,
+                    endDateExclusive = historyEndDateExclusive,
+                )
+                rollups.forEach { totalsByUser.merge(it.userId, it.totalSeconds, Long::plus) }
+            }
+        }
+
+        val liveStart = maxOf(window.startInclusive, todayStart)
+        if (window.measureEndExclusive.isAfter(liveStart)) {
+            val closedLiveSessions = voiceSessionRepository.findClosedSessionsInRange(
+                guildId = guildId,
+                startInclusive = liveStart,
+                endExclusive = window.measureEndExclusive,
+            )
+            accumulateSessions(
+                sessions = closedLiveSessions,
+                window = window,
+                targetUserId = null,
+                totalByUser = totalsByUser,
+                totalRef = null,
+                updateTotal = null,
+                dailySeconds = null,
+            )
+        }
+
+        val openSessions = voiceSessionRepository.findOpenSessionsInRange(
+            guildId = guildId,
+            endExclusive = window.measureEndExclusive,
+        )
+        accumulateSessions(
+            sessions = openSessions,
+            window = window,
+            targetUserId = null,
+            totalByUser = totalsByUser,
+            totalRef = null,
+            updateTotal = null,
+            dailySeconds = null,
+        )
+        return totalsByUser
+    }
+
+    private fun accumulateSessions(
+        sessions: List<VoiceSession>,
+        window: PeriodWindow,
+        targetUserId: Long?,
+        totalByUser: MutableMap<Long, Long>?,
+        totalRef: (() -> Long)?,
+        updateTotal: ((Long) -> Unit)?,
+        dailySeconds: MutableMap<LocalDate, Long>?,
+    ) {
+        sessions.forEach { session ->
+            if (targetUserId != null && session.userId != targetUserId) {
+                return@forEach
+            }
+            val clipped = clipSession(session, window) ?: return@forEach
+            val duration = Duration.between(clipped.startInclusive, clipped.endExclusive).seconds
+            if (duration <= 0) {
+                return@forEach
+            }
+
+            if (totalByUser != null) {
+                totalByUser.merge(session.userId, duration, Long::plus)
+            }
+            if (totalRef != null && updateTotal != null) {
+                updateTotal(totalRef() + duration)
+            }
+            if (dailySeconds != null) {
+                accumulateDailySeconds(dailySeconds, clipped.startInclusive, clipped.endExclusive)
+            }
+        }
     }
 
     private fun clipSession(session: VoiceSession, window: PeriodWindow): InstantRange? {

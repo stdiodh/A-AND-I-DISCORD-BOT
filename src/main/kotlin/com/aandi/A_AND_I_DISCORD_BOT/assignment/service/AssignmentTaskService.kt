@@ -23,7 +23,7 @@ class AssignmentTaskService(
         guildId: Long,
         channelId: Long,
         title: String,
-        verifyUrl: String,
+        verifyUrl: String?,
         remindAtUtc: Instant,
         dueAtUtc: Instant,
         createdBy: Long,
@@ -33,7 +33,10 @@ class AssignmentTaskService(
         closingMessageRaw: String?,
     ): CreateResult {
         val normalizedTitle = normalizeTitle(title) ?: return CreateResult.InvalidTitle
-        val normalizedUrl = validateUrl(verifyUrl) ?: return CreateResult.InvalidUrl
+        val normalizedUrl = when (val urlValidation = normalizeVerifyUrl(verifyUrl)) {
+            is VerifyUrlValidation.Valid -> urlValidation.value
+            VerifyUrlValidation.Invalid -> return CreateResult.InvalidUrl
+        }
         if (!remindAtUtc.isAfter(nowUtc)) {
             return CreateResult.RemindAtMustBeFuture
         }
@@ -52,24 +55,24 @@ class AssignmentTaskService(
         }
 
         guildConfigService.getOrCreate(guildId)
-        val saved = assignmentTaskRepository.save(
-            AssignmentTaskEntity(
-                guildId = guildId,
-                channelId = channelId,
-                title = normalizedTitle,
-                verifyUrl = normalizedUrl,
-                remindAt = remindAtUtc,
-                dueAt = dueAtUtc,
-                notifyRoleId = notifyRoleId,
-                preRemindHoursJson = serializeHours(preReminderHours),
-                preNotifiedJson = serializeHours(emptySet()),
-                closingMessage = normalizedClosingMessage,
-                status = AssignmentStatus.PENDING,
-                createdBy = createdBy,
-                createdAt = nowUtc,
-                updatedAt = nowUtc,
-            ),
+        val entity = AssignmentTaskEntity(
+            guildId = guildId,
+            channelId = channelId,
+            title = normalizedTitle,
+            verifyUrl = normalizedUrl,
+            remindAt = remindAtUtc,
+            dueAt = dueAtUtc,
+            notifyRoleId = notifyRoleId,
+            preRemindHoursJson = serializeHours(preReminderHours),
+            preNotifiedJson = serializeHours(emptySet()),
+            closingMessage = normalizedClosingMessage,
+            status = AssignmentStatus.PENDING,
+            createdBy = createdBy,
+            createdAt = nowUtc,
+            updatedAt = nowUtc,
         )
+        entity.nextFireAt = computeNextFireAt(entity, nowUtc)
+        val saved = assignmentTaskRepository.save(entity)
         return CreateResult.Success(saved.toView())
     }
 
@@ -109,6 +112,7 @@ class AssignmentTaskService(
         val task = assignmentTaskRepository.findByGuildIdAndId(guildId, id) ?: return UpdateResult.NotFound
         task.status = AssignmentStatus.DONE
         task.updatedAt = Instant.now(clock)
+        task.nextFireAt = null
         assignmentTaskRepository.save(task)
         return UpdateResult.Success(task.toView())
     }
@@ -118,16 +122,17 @@ class AssignmentTaskService(
         val task = assignmentTaskRepository.findByGuildIdAndId(guildId, id) ?: return UpdateResult.NotFound
         task.status = AssignmentStatus.CANCELED
         task.updatedAt = Instant.now(clock)
+        task.nextFireAt = null
         assignmentTaskRepository.save(task)
         return UpdateResult.Success(task.toView())
     }
 
     @Transactional
-    fun lockNextInitialReminderTask(
+    fun lockNextReadyTask(
         nowUtc: Instant,
         graceStartUtc: Instant,
     ): AssignmentTaskView? {
-        val tasks = assignmentTaskRepository.lockInitialReminderTasks(
+        val tasks = assignmentTaskRepository.lockReadyTasksByNextFire(
             nowUtc = nowUtc,
             graceStartUtc = graceStartUtc,
             limit = 1,
@@ -136,31 +141,13 @@ class AssignmentTaskService(
     }
 
     @Transactional
-    fun lockNextDueClosingTask(
-        nowUtc: Instant,
-        graceStartUtc: Instant,
-    ): AssignmentTaskView? {
-        val tasks = assignmentTaskRepository.lockDueClosingTasks(
-            nowUtc = nowUtc,
-            graceStartUtc = graceStartUtc,
-            limit = 1,
-        )
-        return tasks.firstOrNull()?.toView()
-    }
-
-    @Transactional
-    fun lockNextPreReminderTask(
-        nowUtc: Instant,
-        scanEndUtc: Instant,
-        graceStartUtc: Instant,
-    ): AssignmentTaskView? {
-        val tasks = assignmentTaskRepository.lockPreReminderCandidates(
-            nowUtc = nowUtc,
-            scanEndUtc = scanEndUtc,
-            graceStartUtc = graceStartUtc,
-            limit = 1,
-        )
-        return tasks.firstOrNull()?.toView()
+    fun refreshNextFireAt(taskId: Long, nowUtc: Instant): Boolean {
+        val task = assignmentTaskRepository.findById(taskId).orElse(null) ?: return false
+        val nextFireAt = computeNextFireAt(task, nowUtc)
+        task.nextFireAt = nextFireAt
+        task.updatedAt = nowUtc
+        assignmentTaskRepository.save(task)
+        return true
     }
 
     fun nextPendingAction(task: AssignmentTaskView, nowUtc: Instant): PendingAction {
@@ -200,8 +187,15 @@ class AssignmentTaskService(
 
     @Transactional
     fun markNotified(taskId: Long, notifiedAtUtc: Instant): Boolean {
-        val updatedCount = assignmentTaskRepository.markNotifiedIfPending(taskId, notifiedAtUtc)
-        return updatedCount > 0
+        val task = assignmentTaskRepository.findById(taskId).orElse(null) ?: return false
+        if (task.status != AssignmentStatus.PENDING || task.notifiedAt != null) {
+            return false
+        }
+        task.notifiedAt = notifiedAtUtc
+        task.nextFireAt = computeNextFireAt(task, notifiedAtUtc)
+        task.updatedAt = notifiedAtUtc
+        assignmentTaskRepository.save(task)
+        return true
     }
 
     @Transactional
@@ -218,6 +212,7 @@ class AssignmentTaskService(
 
         sentHours.add(hoursBeforeDue)
         task.preNotifiedJson = serializeHours(sentHours)
+        task.nextFireAt = computeNextFireAt(task, notifiedAtUtc)
         task.updatedAt = notifiedAtUtc
         assignmentTaskRepository.save(task)
         return true
@@ -235,6 +230,7 @@ class AssignmentTaskService(
 
         task.status = AssignmentStatus.CLOSED
         task.closedAt = closedAtUtc
+        task.nextFireAt = null
         task.updatedAt = closedAtUtc
         assignmentTaskRepository.save(task)
         return true
@@ -242,8 +238,15 @@ class AssignmentTaskService(
 
     @Transactional
     fun cancelPendingForNonRetryable(taskId: Long, updatedAtUtc: Instant): Boolean {
-        val updatedCount = assignmentTaskRepository.cancelPendingTask(taskId, updatedAtUtc)
-        return updatedCount > 0
+        val task = assignmentTaskRepository.findById(taskId).orElse(null) ?: return false
+        if (task.status != AssignmentStatus.PENDING) {
+            return false
+        }
+        task.status = AssignmentStatus.CANCELED
+        task.nextFireAt = null
+        task.updatedAt = updatedAtUtc
+        assignmentTaskRepository.save(task)
+        return true
     }
 
     fun parsePreReminderHours(raw: String?): Set<Int>? {
@@ -321,20 +324,62 @@ class AssignmentTaskService(
         return ClosingMessageValidation.Valid(trimmed)
     }
 
-    private fun validateUrl(rawUrl: String): String? {
+    private fun normalizeVerifyUrl(rawUrl: String?): VerifyUrlValidation {
+        if (rawUrl == null) {
+            return VerifyUrlValidation.Valid(null)
+        }
         val trimmed = rawUrl.trim()
         if (trimmed.isBlank()) {
-            return null
+            return VerifyUrlValidation.Valid(null)
         }
-        val uri = runCatching { URI(trimmed) }.getOrNull() ?: return null
-        val scheme = uri.scheme?.lowercase() ?: return null
+        val uri = runCatching { URI(trimmed) }.getOrNull() ?: return VerifyUrlValidation.Invalid
+        val scheme = uri.scheme?.lowercase() ?: return VerifyUrlValidation.Invalid
         if (scheme != "http" && scheme != "https") {
-            return null
+            return VerifyUrlValidation.Invalid
         }
         if (uri.host.isNullOrBlank()) {
+            return VerifyUrlValidation.Invalid
+        }
+        return VerifyUrlValidation.Valid(uri.toString())
+    }
+
+    private fun computeNextFireAt(task: AssignmentTaskEntity, nowUtc: Instant): Instant? {
+        val taskView = task.toScheduleView()
+        return when (nextPendingAction(taskView, nowUtc)) {
+            PendingAction.InitialReminder,
+            is PendingAction.PreDueReminder,
+            PendingAction.CloseDue,
+            -> nowUtc
+
+            PendingAction.None -> computeFutureNextFireAt(taskView, nowUtc)
+        }
+    }
+
+    private fun computeFutureNextFireAt(task: AssignmentTaskView, nowUtc: Instant): Instant? {
+        val candidates = mutableListOf<Instant>()
+        if (task.status != AssignmentStatus.PENDING) {
             return null
         }
-        return uri.toString()
+
+        if (task.notifiedAt == null) {
+            if (task.remindAt.isAfter(nowUtc)) {
+                candidates += task.remindAt
+            }
+        } else if (task.dueAt.isAfter(nowUtc)) {
+            task.preRemindHours
+                .filterNot { task.preNotifiedHours.contains(it) }
+                .forEach { hours ->
+                    val triggerAt = task.dueAt.minus(hours.toLong(), ChronoUnit.HOURS)
+                    if (triggerAt.isAfter(nowUtc)) {
+                        candidates += triggerAt
+                    }
+                }
+        }
+
+        if (task.closedAt == null && task.dueAt.isAfter(nowUtc)) {
+            candidates += task.dueAt
+        }
+        return candidates.minOrNull()
     }
 
     private fun AssignmentTaskEntity.toView(): AssignmentTaskView = AssignmentTaskView(
@@ -355,6 +400,28 @@ class AssignmentTaskService(
         updatedAt = updatedAt,
         notifiedAt = notifiedAt,
         closedAt = closedAt,
+        nextFireAt = nextFireAt,
+    )
+
+    private fun AssignmentTaskEntity.toScheduleView(): AssignmentTaskView = AssignmentTaskView(
+        id = id ?: 0L,
+        guildId = guildId,
+        channelId = channelId,
+        title = title,
+        verifyUrl = verifyUrl,
+        remindAt = remindAt,
+        dueAt = dueAt,
+        notifyRoleId = notifyRoleId,
+        preRemindHours = parseHours(preRemindHoursJson).ifEmpty { DEFAULT_PRE_REMINDER_HOURS },
+        preNotifiedHours = parseHours(preNotifiedJson),
+        closingMessage = closingMessage,
+        status = status,
+        createdBy = createdBy,
+        createdAt = createdAt,
+        updatedAt = updatedAt,
+        notifiedAt = notifiedAt,
+        closedAt = closedAt,
+        nextFireAt = nextFireAt,
     )
 
     data class AssignmentTaskView(
@@ -362,7 +429,7 @@ class AssignmentTaskService(
         val guildId: Long,
         val channelId: Long,
         val title: String,
-        val verifyUrl: String,
+        val verifyUrl: String?,
         val remindAt: Instant,
         val dueAt: Instant,
         val notifyRoleId: Long?,
@@ -375,6 +442,7 @@ class AssignmentTaskService(
         val updatedAt: Instant,
         val notifiedAt: Instant?,
         val closedAt: Instant?,
+        val nextFireAt: Instant?,
     )
 
     sealed interface PendingAction {
@@ -421,6 +489,11 @@ class AssignmentTaskService(
     private sealed interface ClosingMessageValidation {
         data class Valid(val value: String?) : ClosingMessageValidation
         data object Invalid : ClosingMessageValidation
+    }
+
+    private sealed interface VerifyUrlValidation {
+        data class Valid(val value: String?) : VerifyUrlValidation
+        data object Invalid : VerifyUrlValidation
     }
 
     companion object {

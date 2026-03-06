@@ -24,6 +24,9 @@ class MeetingSessionEntity(
     @Column(name = "thread_id", nullable = false)
     var threadId: Long = 0,
 
+    @Column(name = "board_channel_id")
+    var boardChannelId: Long? = null,
+
     @Column(name = "agenda_link_id")
     var agendaLinkId: Long? = null,
 

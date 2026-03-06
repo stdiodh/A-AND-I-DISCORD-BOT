@@ -25,10 +25,14 @@ class MeetingStructuredCaptureUseCase(
         guildId: Long,
         requestedBy: Long,
         fallbackThreadId: Long?,
+        requestedMeetingSessionId: Long?,
         content: String,
     ): MeetingService.StructuredCaptureResult {
-        val resolution = resolveActiveSession(guildId, fallbackThreadId)
-        if (resolution.threadExistsButNotActive) {
+        val resolution = resolveActiveSession(guildId, fallbackThreadId, requestedMeetingSessionId)
+        if (resolution.meetingIdRequired) {
+            return MeetingService.StructuredCaptureResult.MeetingIdRequired
+        }
+        if (resolution.sessionExistsButNotActive) {
             return MeetingService.StructuredCaptureResult.MeetingNotActive
         }
         val session = resolution.session ?: return MeetingService.StructuredCaptureResult.SessionNotFound
@@ -72,12 +76,16 @@ class MeetingStructuredCaptureUseCase(
         guildId: Long,
         requestedBy: Long,
         fallbackThreadId: Long?,
+        requestedMeetingSessionId: Long?,
         content: String,
         assigneeUserId: Long?,
         dueDateLocal: LocalDate?,
     ): MeetingService.StructuredCaptureResult {
-        val resolution = resolveActiveSession(guildId, fallbackThreadId)
-        if (resolution.threadExistsButNotActive) {
+        val resolution = resolveActiveSession(guildId, fallbackThreadId, requestedMeetingSessionId)
+        if (resolution.meetingIdRequired) {
+            return MeetingService.StructuredCaptureResult.MeetingIdRequired
+        }
+        if (resolution.sessionExistsButNotActive) {
             return MeetingService.StructuredCaptureResult.MeetingNotActive
         }
         val session = resolution.session ?: return MeetingService.StructuredCaptureResult.SessionNotFound
@@ -129,10 +137,14 @@ class MeetingStructuredCaptureUseCase(
         guildId: Long,
         requestedBy: Long,
         fallbackThreadId: Long?,
+        requestedMeetingSessionId: Long?,
         content: String,
     ): MeetingService.StructuredCaptureResult {
-        val resolution = resolveActiveSession(guildId, fallbackThreadId)
-        if (resolution.threadExistsButNotActive) {
+        val resolution = resolveActiveSession(guildId, fallbackThreadId, requestedMeetingSessionId)
+        if (resolution.meetingIdRequired) {
+            return MeetingService.StructuredCaptureResult.MeetingIdRequired
+        }
+        if (resolution.sessionExistsButNotActive) {
             return MeetingService.StructuredCaptureResult.MeetingNotActive
         }
         val session = resolution.session ?: return MeetingService.StructuredCaptureResult.SessionNotFound
@@ -174,9 +186,13 @@ class MeetingStructuredCaptureUseCase(
     fun listItems(
         guildId: Long,
         fallbackThreadId: Long?,
+        requestedMeetingSessionId: Long?,
     ): MeetingService.StructuredListResult {
-        val resolution = resolveActiveSession(guildId, fallbackThreadId)
-        if (resolution.threadExistsButNotActive) {
+        val resolution = resolveActiveSession(guildId, fallbackThreadId, requestedMeetingSessionId)
+        if (resolution.meetingIdRequired) {
+            return MeetingService.StructuredListResult.MeetingIdRequired
+        }
+        if (resolution.sessionExistsButNotActive) {
             return MeetingService.StructuredListResult.MeetingNotActive
         }
         val session = resolution.session ?: return MeetingService.StructuredListResult.SessionNotFound
@@ -203,10 +219,14 @@ class MeetingStructuredCaptureUseCase(
         guildId: Long,
         requestedBy: Long,
         fallbackThreadId: Long?,
+        requestedMeetingSessionId: Long?,
         itemId: Long,
     ): MeetingService.StructuredCancelResult {
-        val resolution = resolveActiveSession(guildId, fallbackThreadId)
-        if (resolution.threadExistsButNotActive) {
+        val resolution = resolveActiveSession(guildId, fallbackThreadId, requestedMeetingSessionId)
+        if (resolution.meetingIdRequired) {
+            return MeetingService.StructuredCancelResult.MeetingIdRequired
+        }
+        if (resolution.sessionExistsButNotActive) {
             return MeetingService.StructuredCancelResult.MeetingNotActive
         }
         val session = resolution.session ?: return MeetingService.StructuredCancelResult.SessionNotFound
@@ -252,28 +272,38 @@ class MeetingStructuredCaptureUseCase(
         }
     }
 
-    private fun resolveActiveSession(guildId: Long, fallbackThreadId: Long?): SessionResolution {
+    private fun resolveActiveSession(
+        guildId: Long,
+        fallbackThreadId: Long?,
+        requestedMeetingSessionId: Long?,
+    ): SessionResolution {
         if (fallbackThreadId != null) {
             val threadSession = meetingSessionRepository.findByGuildIdAndThreadId(guildId, fallbackThreadId)
             if (threadSession != null) {
                 if (threadSession.status == MeetingSessionStatus.ACTIVE) {
-                    return SessionResolution(session = threadSession, threadExistsButNotActive = false)
+                    return SessionResolution(session = threadSession)
                 }
-                return SessionResolution(session = null, threadExistsButNotActive = true)
+                return SessionResolution(sessionExistsButNotActive = true)
             }
         }
 
+        if (requestedMeetingSessionId != null) {
+            val session = meetingSessionRepository.findByIdAndGuildId(requestedMeetingSessionId, guildId)
+                ?: return SessionResolution()
+            if (session.status == MeetingSessionStatus.ACTIVE) {
+                return SessionResolution(session = session)
+            }
+            return SessionResolution(sessionExistsButNotActive = true)
+        }
+
         return SessionResolution(
-            session = meetingSessionRepository.findFirstByGuildIdAndStatusOrderByStartedAtDesc(
-                guildId,
-                MeetingSessionStatus.ACTIVE,
-            ),
-            threadExistsButNotActive = false,
+            meetingIdRequired = true,
         )
     }
 
     private data class SessionResolution(
-        val session: MeetingSessionEntity?,
-        val threadExistsButNotActive: Boolean,
+        val session: MeetingSessionEntity? = null,
+        val sessionExistsButNotActive: Boolean = false,
+        val meetingIdRequired: Boolean = false,
     )
 }

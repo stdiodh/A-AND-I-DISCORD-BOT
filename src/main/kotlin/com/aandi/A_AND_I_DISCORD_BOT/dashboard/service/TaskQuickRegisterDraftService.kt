@@ -57,12 +57,15 @@ class TaskQuickRegisterDraftService(
         selectedChannelId: Long? = null,
         selectedRoleId: Long? = null,
         mentionEnabled: Boolean? = null,
+        preReminderHoursRaw: String? = null,
+        overridePreReminderHoursRaw: Boolean = false,
     ): QuickDraft? {
         val current = get(draftId) ?: return null
         val updated = current.copy(
             selectedChannelId = selectedChannelId ?: current.selectedChannelId,
             selectedRoleId = selectedRoleId ?: current.selectedRoleId,
             mentionEnabled = mentionEnabled ?: current.mentionEnabled,
+            preReminderHoursRaw = if (overridePreReminderHoursRaw) preReminderHoursRaw else current.preReminderHoursRaw,
             updatedAt = Instant.now(clock),
         )
         drafts[draftId] = updated

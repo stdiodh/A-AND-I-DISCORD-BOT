@@ -8,5 +8,5 @@ import org.springframework.stereotype.Component
 class FeatureFlagsProperties {
     var homeV2: Boolean = false
     var meetingSummaryV2: Boolean = true
-    var taskQuickregisterV2: Boolean = false
+    var taskQuickregisterV2: Boolean = true
 }

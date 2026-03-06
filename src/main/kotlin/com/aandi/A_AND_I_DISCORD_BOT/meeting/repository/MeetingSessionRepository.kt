@@ -11,7 +11,33 @@ interface MeetingSessionRepository : JpaRepository<MeetingSessionEntity, Long> {
         status: MeetingSessionStatus,
     ): MeetingSessionEntity?
 
+    fun findFirstByGuildIdAndBoardChannelIdAndStatusOrderByStartedAtDesc(
+        guildId: Long,
+        boardChannelId: Long,
+        status: MeetingSessionStatus,
+    ): MeetingSessionEntity?
+
+    fun findAllByGuildIdAndBoardChannelIdAndStatusOrderByStartedAtDesc(
+        guildId: Long,
+        boardChannelId: Long,
+        status: MeetingSessionStatus,
+    ): List<MeetingSessionEntity>
+
+    fun findAllByGuildIdAndStatusOrderByStartedAtDesc(
+        guildId: Long,
+        status: MeetingSessionStatus,
+    ): List<MeetingSessionEntity>
+
     fun findFirstByGuildIdOrderByStartedAtDesc(guildId: Long): MeetingSessionEntity?
 
     fun findByGuildIdAndThreadId(guildId: Long, threadId: Long): MeetingSessionEntity?
+
+    fun findByIdAndGuildId(id: Long, guildId: Long): MeetingSessionEntity?
+
+    fun findTop50ByGuildIdOrderByStartedAtDesc(guildId: Long): List<MeetingSessionEntity>
+
+    fun findTop50ByGuildIdAndStatusOrderByStartedAtDesc(
+        guildId: Long,
+        status: MeetingSessionStatus,
+    ): List<MeetingSessionEntity>
 }

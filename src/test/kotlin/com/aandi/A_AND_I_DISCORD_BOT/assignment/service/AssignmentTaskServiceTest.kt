@@ -14,6 +14,7 @@ import io.mockk.verify
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
+import java.util.Optional
 import kotlin.test.fail
 
 class AssignmentTaskServiceTest : FunSpec({
@@ -119,6 +120,58 @@ class AssignmentTaskServiceTest : FunSpec({
         verify(exactly = 0) { assignmentTaskRepository.save(any()) }
     }
 
+    test("create-링크를 입력하지 않으면 null로 저장한다") {
+        val nowUtc = Instant.parse("2026-03-01T12:30:00Z")
+        every { guildConfigService.getOrCreate(any()) } returns GuildConfig(guildId = 1L)
+        every { assignmentTaskRepository.save(any()) } answers {
+            val entity = firstArg<AssignmentTaskEntity>()
+            entity.id = 99L
+            entity
+        }
+
+        val result = service.create(
+            guildId = 1L,
+            channelId = 2L,
+            title = "링크 선택 과제",
+            verifyUrl = null,
+            remindAtUtc = nowUtc.plusSeconds(3600),
+            dueAtUtc = nowUtc.plusSeconds(7200),
+            createdBy = 3L,
+            nowUtc = nowUtc,
+            notifyRoleId = null,
+            preReminderHoursRaw = null,
+            closingMessageRaw = null,
+        )
+
+        if (result !is AssignmentTaskService.CreateResult.Success) {
+            fail("Expected success but was $result")
+        }
+        result.task.verifyUrl shouldBe null
+        verify(exactly = 1) { assignmentTaskRepository.save(any()) }
+    }
+
+    test("create-링크 형식이 잘못되면 거부된다") {
+        val nowUtc = Instant.parse("2026-03-01T12:30:00Z")
+
+        val result = service.create(
+            guildId = 1L,
+            channelId = 2L,
+            title = "잘못된 링크 과제",
+            verifyUrl = "ftp://example.com/task",
+            remindAtUtc = nowUtc.plusSeconds(3600),
+            dueAtUtc = nowUtc.plusSeconds(7200),
+            createdBy = 3L,
+            nowUtc = nowUtc,
+            notifyRoleId = null,
+            preReminderHoursRaw = null,
+            closingMessageRaw = null,
+        )
+
+        result shouldBe AssignmentTaskService.CreateResult.InvalidUrl
+        verify(exactly = 0) { guildConfigService.getOrCreate(any()) }
+        verify(exactly = 0) { assignmentTaskRepository.save(any()) }
+    }
+
     test("create-기본 임박알림값으로 저장된다") {
         val nowUtc = Instant.parse("2026-03-01T12:30:00Z")
         every { guildConfigService.getOrCreate(any()) } returns GuildConfig(guildId = 1L)
@@ -150,6 +203,64 @@ class AssignmentTaskServiceTest : FunSpec({
         }
         verify(exactly = 1) { guildConfigService.getOrCreate(1L) }
         verify(exactly = 1) { assignmentTaskRepository.save(any()) }
+    }
+
+    test("create-성공 시 nextFireAt은 remindAt으로 설정된다") {
+        val nowUtc = Instant.parse("2026-03-01T12:30:00Z")
+        val remindAt = nowUtc.plusSeconds(3600)
+        every { guildConfigService.getOrCreate(any()) } returns GuildConfig(guildId = 1L)
+        every { assignmentTaskRepository.save(any()) } answers {
+            val entity = firstArg<AssignmentTaskEntity>()
+            entity.id = 321L
+            entity
+        }
+
+        val result = service.create(
+            guildId = 1L,
+            channelId = 2L,
+            title = "next_fire 과제",
+            verifyUrl = "https://example.com/task",
+            remindAtUtc = remindAt,
+            dueAtUtc = nowUtc.plusSeconds(7200),
+            createdBy = 3L,
+            nowUtc = nowUtc,
+            notifyRoleId = null,
+            preReminderHoursRaw = null,
+            closingMessageRaw = null,
+        )
+
+        if (result !is AssignmentTaskService.CreateResult.Success) {
+            fail("Expected success but was $result")
+        }
+        result.task.nextFireAt shouldBe remindAt
+    }
+
+    test("refreshNextFireAt-미발송 임박알림이 미래에 있으면 가장 가까운 시각으로 갱신된다") {
+        val nowUtc = Instant.parse("2026-03-01T12:30:00Z")
+        val dueAt = nowUtc.plusSeconds(2 * 3600)
+        val entity = AssignmentTaskEntity(
+            id = 900L,
+            guildId = 1L,
+            channelId = 2L,
+            title = "refresh 테스트",
+            verifyUrl = null,
+            remindAt = nowUtc.minusSeconds(3600),
+            dueAt = dueAt,
+            preRemindHoursJson = "[24,3,1]",
+            preNotifiedJson = "[]",
+            status = AssignmentStatus.PENDING,
+            createdBy = 3L,
+            createdAt = nowUtc.minusSeconds(4000),
+            updatedAt = nowUtc.minusSeconds(4000),
+            notifiedAt = nowUtc.minusSeconds(600),
+        )
+        every { assignmentTaskRepository.findById(900L) } returns Optional.of(entity)
+        every { assignmentTaskRepository.save(any()) } answers { firstArg() }
+
+        val updated = service.refreshNextFireAt(900L, nowUtc)
+
+        updated shouldBe true
+        entity.nextFireAt shouldBe dueAt.minusSeconds(3600)
     }
 
     test("list-기본 조회는 취소 상태를 제외한 상태만 조회한다") {

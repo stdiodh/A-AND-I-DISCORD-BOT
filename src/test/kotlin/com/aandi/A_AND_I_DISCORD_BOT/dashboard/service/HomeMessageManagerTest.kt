@@ -16,6 +16,7 @@ import net.dv8tion.jda.api.entities.MessageEmbed
 import net.dv8tion.jda.api.entities.MessageHistory
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel
 import net.dv8tion.jda.api.requests.RestAction
+import net.dv8tion.jda.api.requests.restaction.MessageEditAction
 import net.dv8tion.jda.api.requests.restaction.MessageCreateAction
 
 class HomeMessageManagerTest : FunSpec({
@@ -112,5 +113,47 @@ class HomeMessageManagerTest : FunSpec({
         second.outcome shouldBe HomeMessageManager.EnsureOutcome.REUSED
         verify(exactly = 1) { channel.sendMessageEmbeds(any<MessageEmbed>(), *anyVararg()) }
         verify(exactly = 1) { guildConfigService.setDashboard(100L, 200L, 301L) }
+    }
+
+    test("updateHomeMessage는 payload가 동일하면 edit를 생략한다") {
+        val guildConfigService = mockk<GuildConfigService>()
+        val jda = mockk<JDA>()
+        val channel = mockk<TextChannel>()
+        val message = mockk<Message>()
+        val retrieveAction = mockk<RestAction<Message>>()
+        val editAction = mockk<MessageEditAction>()
+
+        every { guildConfigService.getDashboard(100L) } returns GuildConfigService.DashboardConfig(
+            channelId = 200L,
+            messageId = 300L,
+        )
+        every { jda.getTextChannelById(200L) } returns channel
+        every { channel.retrieveMessageById(300L) } returns retrieveAction
+        every { retrieveAction.complete() } returns message
+
+        val manager = HomeMessageManager(guildConfigService, jda)
+        val marker = manager.markerForGuild(100L)
+        val payloadEmbed = EmbedBuilder()
+            .setTitle("A&I 운영 홈")
+            .setDescription("동일 payload")
+            .build()
+        val markedEmbed = EmbedBuilder(payloadEmbed).setFooter(marker).build()
+        every { message.embeds } returns listOf(markedEmbed)
+        every { message.components } returns emptyList()
+        every { message.editMessageEmbeds(any<MessageEmbed>(), *anyVararg()) } returns editAction
+        every { editAction.setComponents(any<List<net.dv8tion.jda.api.components.actionrow.ActionRow>>()) } returns editAction
+        every { editAction.complete() } returns message
+
+        val result = manager.updateHomeMessage(
+            guildId = 100L,
+            payload = HomeMessageManager.HomePayload(
+                embed = payloadEmbed,
+                components = emptyList(),
+            ),
+        )
+
+        val success = result.shouldBeInstanceOf<HomeMessageManager.UpdateResult.Success>()
+        success.updated shouldBe false
+        verify(exactly = 0) { message.editMessageEmbeds(any<MessageEmbed>(), *anyVararg()) }
     }
 })

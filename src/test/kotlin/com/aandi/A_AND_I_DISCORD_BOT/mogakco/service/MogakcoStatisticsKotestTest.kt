@@ -7,6 +7,7 @@ import com.aandi.A_AND_I_DISCORD_BOT.common.time.PeriodCalculator
 import com.aandi.A_AND_I_DISCORD_BOT.common.time.PeriodType
 import com.aandi.A_AND_I_DISCORD_BOT.mogakco.entity.VoiceSession
 import com.aandi.A_AND_I_DISCORD_BOT.mogakco.repository.MogakcoChannelRepository
+import com.aandi.A_AND_I_DISCORD_BOT.mogakco.repository.VoiceSessionDailyRollupRepository
 import com.aandi.A_AND_I_DISCORD_BOT.mogakco.repository.VoiceSessionRepository
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.doubles.plusOrMinus
@@ -27,6 +28,7 @@ class MogakcoStatisticsKotestTest : FunSpec({
     val guildConfigRepository = mockk<GuildConfigRepository>()
     val mogakcoChannelRepository = mockk<MogakcoChannelRepository>()
     val voiceSessionRepository = mockk<VoiceSessionRepository>()
+    val voiceSessionDailyRollupRepository = mockk<VoiceSessionDailyRollupRepository>()
     val permissionChecker = mockk<PermissionChecker>()
     val testClock = Clock.fixed(Instant.parse("2026-02-24T03:00:00Z"), ZoneOffset.UTC)
     val periodCalculator = PeriodCalculator("Asia/Seoul", testClock)
@@ -34,6 +36,7 @@ class MogakcoStatisticsKotestTest : FunSpec({
         guildConfigRepository = guildConfigRepository,
         mogakcoChannelRepository = mogakcoChannelRepository,
         voiceSessionRepository = voiceSessionRepository,
+        voiceSessionDailyRollupRepository = voiceSessionDailyRollupRepository,
         periodCalculator = periodCalculator,
         permissionChecker = permissionChecker,
         clock = testClock,
@@ -41,6 +44,10 @@ class MogakcoStatisticsKotestTest : FunSpec({
 
     beforeTest {
         clearAllMocks()
+        every { voiceSessionRepository.findClosedSessionsInRange(any(), any(), any()) } returns emptyList()
+        every { voiceSessionRepository.findOpenSessionsInRange(any(), any()) } returns emptyList()
+        every { voiceSessionDailyRollupRepository.aggregateUserTotals(any(), any(), any()) } returns emptyList()
+        every { voiceSessionDailyRollupRepository.findUserDailyTotals(any(), any(), any(), any()) } returns emptyList()
     }
 
     test("leaderboard-유저 A 2시간 유저 B 30분이면 A가 1위다") {
@@ -63,8 +70,11 @@ class MogakcoStatisticsKotestTest : FunSpec({
         )
 
         every {
-            voiceSessionRepository.findSessionsInRange(guildId, window.startInclusive, window.measureEndExclusive)
-        } returns sessions
+            voiceSessionRepository.findClosedSessionsInRange(guildId, any(), window.measureEndExclusive)
+        } returns sessions.filter { it.leftAt != null }
+        every {
+            voiceSessionRepository.findOpenSessionsInRange(guildId, window.measureEndExclusive)
+        } returns sessions.filter { it.leftAt == null }
 
         val result = service.getLeaderboard(guildId = guildId, period = PeriodType.WEEK, top = 10, now = now)
 
@@ -95,8 +105,11 @@ class MogakcoStatisticsKotestTest : FunSpec({
         )
 
         every {
-            voiceSessionRepository.findSessionsInRange(guildId, window.startInclusive, window.measureEndExclusive)
-        } returns sessions
+            voiceSessionRepository.findClosedSessionsInRange(guildId, any(), window.measureEndExclusive)
+        } returns sessions.filter { it.leftAt != null }
+        every {
+            voiceSessionRepository.findOpenSessionsInRange(guildId, window.measureEndExclusive)
+        } returns sessions.filter { it.leftAt == null }
 
         val result = service.getLeaderboard(guildId = guildId, period = PeriodType.WEEK, top = 10, now = now)
 
@@ -111,7 +124,10 @@ class MogakcoStatisticsKotestTest : FunSpec({
         val window = periodCalculator.currentWindow(PeriodType.WEEK, now)
 
         every {
-            voiceSessionRepository.findSessionsInRange(guildId, window.startInclusive, window.measureEndExclusive)
+            voiceSessionRepository.findClosedSessionsInRange(guildId, any(), window.measureEndExclusive)
+        } returns emptyList()
+        every {
+            voiceSessionRepository.findOpenSessionsInRange(guildId, window.measureEndExclusive)
         } returns emptyList()
 
         val result = service.getLeaderboard(guildId = guildId, period = PeriodType.WEEK, top = 10, now = now)
@@ -143,8 +159,11 @@ class MogakcoStatisticsKotestTest : FunSpec({
         )
 
         every {
-            voiceSessionRepository.findSessionsInRange(guildId, window.startInclusive, window.measureEndExclusive)
-        } returns sessions
+            voiceSessionRepository.findClosedSessionsInRange(guildId, any(), window.measureEndExclusive)
+        } returns sessions.filter { it.leftAt != null }
+        every {
+            voiceSessionRepository.findOpenSessionsInRange(guildId, window.measureEndExclusive)
+        } returns sessions.filter { it.leftAt == null }
         every { guildConfigRepository.findById(guildId) } returns Optional.of(
             GuildConfig(
                 guildId = guildId,
@@ -178,8 +197,11 @@ class MogakcoStatisticsKotestTest : FunSpec({
         )
 
         every {
-            voiceSessionRepository.findSessionsInRange(guildId, window.startInclusive, window.measureEndExclusive)
-        } returns sessions
+            voiceSessionRepository.findClosedSessionsInRange(guildId, any(), window.measureEndExclusive)
+        } returns sessions.filter { it.leftAt != null }
+        every {
+            voiceSessionRepository.findOpenSessionsInRange(guildId, window.measureEndExclusive)
+        } returns sessions.filter { it.leftAt == null }
         every { guildConfigRepository.findById(guildId) } returns Optional.of(
             GuildConfig(
                 guildId = guildId,
@@ -211,8 +233,11 @@ class MogakcoStatisticsKotestTest : FunSpec({
         )
 
         every {
-            voiceSessionRepository.findSessionsInRange(guildId, window.startInclusive, window.measureEndExclusive)
-        } returns sessions
+            voiceSessionRepository.findClosedSessionsInRange(guildId, any(), window.measureEndExclusive)
+        } returns sessions.filter { it.leftAt != null }
+        every {
+            voiceSessionRepository.findOpenSessionsInRange(guildId, window.measureEndExclusive)
+        } returns sessions.filter { it.leftAt == null }
         every { guildConfigRepository.findById(guildId) } returns Optional.of(
             GuildConfig(
                 guildId = guildId,

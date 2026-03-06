@@ -15,7 +15,9 @@ object DashboardActionIds {
     const val ASSIGNMENT_V2_CHANNEL_SELECT_PREFIX = "assign:quick:v2:channel"
     const val ASSIGNMENT_V2_ROLE_SELECT_PREFIX = "assign:quick:v2:role"
     const val ASSIGNMENT_V2_MENTION_SELECT_PREFIX = "assign:quick:v2:mention"
+    const val ASSIGNMENT_V2_REMINDER_SELECT_PREFIX = "assign:quick:v2:reminder"
     const val ASSIGNMENT_V2_CONFIRM_PREFIX = "assign:quick:v2:confirm"
+    const val ASSIGNMENT_V2_ADVANCED_PREFIX = "assign:quick:v2:advanced"
     const val ASSIGNMENT_V2_CANCEL_PREFIX = "assign:quick:v2:cancel"
 
     const val MOGAKCO_RANK_SELECT = "mogakco:rank_select"
@@ -25,4 +27,9 @@ object DashboardActionIds {
     const val HOME_MEETING_MOVE_UNSET = "home:meeting:unset"
     const val HOME_ASSIGNMENT_MOVE_UNSET = "home:assignment:unset"
     const val HOME_MOGAKCO_MOVE_UNSET = "home:mogakco:unset"
+    const val HOME_SETUP_START = "home:setup:start"
+    const val HOME_SETUP_START_MEETING = "home:setup:start:meeting"
+    const val HOME_SETUP_START_ASSIGNMENT = "home:setup:start:assignment"
+    const val HOME_SETUP_START_MOGAKCO = "home:setup:start:mogakco"
+    const val HOME_QUICK_HELP = "home:quick:help"
 }

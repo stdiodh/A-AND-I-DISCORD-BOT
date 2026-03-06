@@ -24,4 +24,34 @@ interface VoiceSessionRepository : JpaRepository<VoiceSession, Long> {
         @Param("startInclusive") startInclusive: Instant,
         @Param("endExclusive") endExclusive: Instant,
     ): List<VoiceSession>
+
+    @Query(
+        """
+        select v
+        from VoiceSession v
+        where v.guildId = :guildId
+          and v.leftAt is not null
+          and v.joinedAt < :endExclusive
+          and v.leftAt > :startInclusive
+        """,
+    )
+    fun findClosedSessionsInRange(
+        @Param("guildId") guildId: Long,
+        @Param("startInclusive") startInclusive: Instant,
+        @Param("endExclusive") endExclusive: Instant,
+    ): List<VoiceSession>
+
+    @Query(
+        """
+        select v
+        from VoiceSession v
+        where v.guildId = :guildId
+          and v.leftAt is null
+          and v.joinedAt < :endExclusive
+        """,
+    )
+    fun findOpenSessionsInRange(
+        @Param("guildId") guildId: Long,
+        @Param("endExclusive") endExclusive: Instant,
+    ): List<VoiceSession>
 }

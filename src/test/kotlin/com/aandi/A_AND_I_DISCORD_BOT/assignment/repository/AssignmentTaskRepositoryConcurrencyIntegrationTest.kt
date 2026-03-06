@@ -45,8 +45,8 @@ class AssignmentTaskRepositoryConcurrencyIntegrationTest(
             """
             INSERT INTO assignment_tasks (
               guild_id, channel_id, title, verify_url, remind_at, due_at,
-              status, created_by, created_at, updated_at, notified_at
-            ) VALUES (?, ?, ?, ?, ?, ?, 'PENDING', ?, ?, ?, NULL)
+              status, created_by, created_at, updated_at, notified_at, next_fire_at
+            ) VALUES (?, ?, ?, ?, ?, ?, 'PENDING', ?, ?, ?, NULL, ?)
             """.trimIndent(),
             1001L,
             2002L,
@@ -57,11 +57,12 @@ class AssignmentTaskRepositoryConcurrencyIntegrationTest(
             3003L,
             Timestamp.from(now.minusSeconds(90)),
             Timestamp.from(now.minusSeconds(90)),
+            Timestamp.from(now.minusSeconds(30)),
         )
     }
 
     @Test
-    fun `findDueTasksForUpdate-SKIP LOCKED로 동시 실행 시 한 트랜잭션만 row를 점유한다`() {
+    fun `lockReadyTasksByNextFire-SKIP LOCKED로 동시 실행 시 한 트랜잭션만 row를 점유한다`() {
         val nowUtc = Instant.parse("2026-03-01T12:30:00Z")
         val graceStartUtc = nowUtc.minus(24, ChronoUnit.HOURS)
         val firstLocked = CountDownLatch(1)
@@ -70,7 +71,7 @@ class AssignmentTaskRepositoryConcurrencyIntegrationTest(
 
         val firstFuture = executor.submit<Long?> {
             transactionTemplate.execute<Long?> {
-                val locked = assignmentTaskRepository.findDueTasksForUpdate(nowUtc, graceStartUtc, 1).firstOrNull()?.id
+                val locked = assignmentTaskRepository.lockReadyTasksByNextFire(nowUtc, graceStartUtc, 1).firstOrNull()?.id
                 firstLocked.countDown()
                 if (locked != null) {
                     releaseFirst.await(3, TimeUnit.SECONDS)
@@ -81,7 +82,7 @@ class AssignmentTaskRepositoryConcurrencyIntegrationTest(
         val secondFuture = executor.submit<Long?> {
             firstLocked.await(3, TimeUnit.SECONDS)
             transactionTemplate.execute<Long?> {
-                assignmentTaskRepository.findDueTasksForUpdate(nowUtc, graceStartUtc, 1).firstOrNull()?.id
+                assignmentTaskRepository.lockReadyTasksByNextFire(nowUtc, graceStartUtc, 1).firstOrNull()?.id
             }
         }
 

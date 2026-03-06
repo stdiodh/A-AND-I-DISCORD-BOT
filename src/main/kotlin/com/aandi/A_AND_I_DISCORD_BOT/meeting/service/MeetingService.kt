@@ -10,6 +10,7 @@ class MeetingService(
     private val meetingStartUseCase: MeetingStartUseCase,
     private val meetingEndUseCase: MeetingEndUseCase,
     private val meetingStructuredCaptureUseCase: MeetingStructuredCaptureUseCase,
+    private val meetingHistoryUseCase: MeetingHistoryUseCase,
 ) {
 
     @Transactional
@@ -33,15 +34,13 @@ class MeetingService(
     fun endMeeting(
         guildId: Long,
         requestedBy: Long,
-        fallbackThreadId: Long?,
-        requestedThreadId: Long?,
+        meetingSessionId: Long,
         progress: ((SummaryProgress) -> Unit)? = null,
     ): EndResult {
         return meetingEndUseCase.endMeeting(
             guildId = guildId,
             requestedBy = requestedBy,
-            fallbackThreadId = fallbackThreadId,
-            requestedThreadId = requestedThreadId,
+            meetingSessionId = meetingSessionId,
             progress = progress,
         )
     }
@@ -92,16 +91,33 @@ class MeetingService(
     }
 
     @Transactional
+    fun addManualTodo(
+        guildId: Long,
+        requestedBy: Long,
+        meetingSessionId: Long,
+        todo: String,
+    ): SummaryMutationResult {
+        return meetingEndUseCase.addManualTodo(
+            guildId = guildId,
+            requestedBy = requestedBy,
+            meetingSessionId = meetingSessionId,
+            todo = todo,
+        )
+    }
+
+    @Transactional
     fun captureDecision(
         guildId: Long,
         requestedBy: Long,
         fallbackThreadId: Long?,
+        requestedMeetingSessionId: Long?,
         content: String,
     ): StructuredCaptureResult {
         return meetingStructuredCaptureUseCase.captureDecision(
             guildId = guildId,
             requestedBy = requestedBy,
             fallbackThreadId = fallbackThreadId,
+            requestedMeetingSessionId = requestedMeetingSessionId,
             content = content,
         )
     }
@@ -111,6 +127,7 @@ class MeetingService(
         guildId: Long,
         requestedBy: Long,
         fallbackThreadId: Long?,
+        requestedMeetingSessionId: Long?,
         content: String,
         assigneeUserId: Long?,
         dueDateLocal: java.time.LocalDate?,
@@ -119,6 +136,7 @@ class MeetingService(
             guildId = guildId,
             requestedBy = requestedBy,
             fallbackThreadId = fallbackThreadId,
+            requestedMeetingSessionId = requestedMeetingSessionId,
             content = content,
             assigneeUserId = assigneeUserId,
             dueDateLocal = dueDateLocal,
@@ -130,12 +148,14 @@ class MeetingService(
         guildId: Long,
         requestedBy: Long,
         fallbackThreadId: Long?,
+        requestedMeetingSessionId: Long?,
         content: String,
     ): StructuredCaptureResult {
         return meetingStructuredCaptureUseCase.captureTodo(
             guildId = guildId,
             requestedBy = requestedBy,
             fallbackThreadId = fallbackThreadId,
+            requestedMeetingSessionId = requestedMeetingSessionId,
             content = content,
         )
     }
@@ -144,10 +164,12 @@ class MeetingService(
     fun listStructuredItems(
         guildId: Long,
         fallbackThreadId: Long?,
+        requestedMeetingSessionId: Long?,
     ): StructuredListResult {
         return meetingStructuredCaptureUseCase.listItems(
             guildId = guildId,
             fallbackThreadId = fallbackThreadId,
+            requestedMeetingSessionId = requestedMeetingSessionId,
         )
     }
 
@@ -156,13 +178,44 @@ class MeetingService(
         guildId: Long,
         requestedBy: Long,
         fallbackThreadId: Long?,
+        requestedMeetingSessionId: Long?,
         itemId: Long,
     ): StructuredCancelResult {
         return meetingStructuredCaptureUseCase.cancelItem(
             guildId = guildId,
             requestedBy = requestedBy,
             fallbackThreadId = fallbackThreadId,
+            requestedMeetingSessionId = requestedMeetingSessionId,
             itemId = itemId,
+        )
+    }
+
+    @Transactional(readOnly = true)
+    fun listActiveMeetings(guildId: Long): ActiveMeetingsResult {
+        return meetingStartUseCase.listActiveMeetings(guildId)
+    }
+
+    @Transactional(readOnly = true)
+    fun listMeetingHistory(
+        guildId: Long,
+        days: Int,
+        statusFilter: HistoryStatusFilter,
+    ): HistoryResult {
+        return meetingHistoryUseCase.listHistory(
+            guildId = guildId,
+            days = days,
+            statusFilter = statusFilter,
+        )
+    }
+
+    @Transactional(readOnly = true)
+    fun getMeetingDetail(
+        guildId: Long,
+        meetingSessionId: Long,
+    ): MeetingDetailResult {
+        return meetingHistoryUseCase.detail(
+            guildId = guildId,
+            meetingSessionId = meetingSessionId,
         )
     }
 
@@ -237,6 +290,7 @@ class MeetingService(
         ) : StructuredCaptureResult
 
         data object SessionNotFound : StructuredCaptureResult
+        data object MeetingIdRequired : StructuredCaptureResult
         data object MeetingNotActive : StructuredCaptureResult
         data class ThreadNotFound(val threadId: Long) : StructuredCaptureResult
     }
@@ -249,6 +303,7 @@ class MeetingService(
         ) : StructuredListResult
 
         data object SessionNotFound : StructuredListResult
+        data object MeetingIdRequired : StructuredListResult
         data object MeetingNotActive : StructuredListResult
         data class ThreadNotFound(val threadId: Long) : StructuredListResult
     }
@@ -261,6 +316,7 @@ class MeetingService(
         ) : StructuredCancelResult
 
         data object SessionNotFound : StructuredCancelResult
+        data object MeetingIdRequired : StructuredCancelResult
         data object MeetingNotActive : StructuredCancelResult
         data class ThreadNotFound(val threadId: Long) : StructuredCancelResult
         data object ItemNotFound : StructuredCancelResult
@@ -277,4 +333,66 @@ class MeetingService(
         val type: StructuredCaptureType,
         val summary: String,
     )
+
+    data class ActiveMeetingView(
+        val sessionId: Long,
+        val boardChannelId: Long?,
+        val threadId: Long,
+        val startedBy: Long,
+        val startedAt: java.time.Instant,
+    )
+
+    sealed interface ActiveMeetingsResult {
+        data class Success(val meetings: List<ActiveMeetingView>) : ActiveMeetingsResult
+    }
+
+    enum class HistoryStatusFilter {
+        ALL,
+        ACTIVE,
+        ENDED,
+    }
+
+    data class HistoryMeetingView(
+        val sessionId: Long,
+        val status: com.aandi.A_AND_I_DISCORD_BOT.meeting.entity.MeetingSessionStatus,
+        val boardChannelId: Long?,
+        val threadId: Long,
+        val startedBy: Long,
+        val startedAt: java.time.Instant,
+        val endedAt: java.time.Instant?,
+        val summaryMessageId: Long?,
+        val decisionCount: Int,
+        val actionCount: Int,
+        val todoCount: Int,
+    )
+
+    sealed interface HistoryResult {
+        data class Success(val meetings: List<HistoryMeetingView>) : HistoryResult
+        data object InvalidDays : HistoryResult
+    }
+
+    data class MeetingDetailView(
+        val sessionId: Long,
+        val status: com.aandi.A_AND_I_DISCORD_BOT.meeting.entity.MeetingSessionStatus,
+        val boardChannelId: Long?,
+        val threadId: Long,
+        val startedBy: Long,
+        val startedAt: java.time.Instant,
+        val endedBy: Long?,
+        val endedAt: java.time.Instant?,
+        val summaryMessageId: Long?,
+        val agendaTitle: String?,
+        val agendaUrl: String?,
+        val decisionCount: Int,
+        val actionCount: Int,
+        val todoCount: Int,
+        val decisions: List<String>,
+        val actions: List<String>,
+        val todos: List<String>,
+    )
+
+    sealed interface MeetingDetailResult {
+        data class Success(val detail: MeetingDetailView) : MeetingDetailResult
+        data object NotFound : MeetingDetailResult
+    }
 }

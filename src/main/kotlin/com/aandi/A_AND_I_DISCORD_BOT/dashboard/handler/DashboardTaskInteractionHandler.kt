@@ -1,6 +1,7 @@
 package com.aandi.A_AND_I_DISCORD_BOT.dashboard.handler
 
 import com.aandi.A_AND_I_DISCORD_BOT.admin.service.GuildConfigService
+import com.aandi.A_AND_I_DISCORD_BOT.assignment.entity.AssignmentStatus
 import com.aandi.A_AND_I_DISCORD_BOT.assignment.preference.service.GuildUserTaskPreferenceService
 import com.aandi.A_AND_I_DISCORD_BOT.assignment.service.AssignmentTaskService
 import com.aandi.A_AND_I_DISCORD_BOT.common.auth.PermissionGate
@@ -35,7 +36,6 @@ import org.slf4j.LoggerFactory
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Component
 import java.awt.Color
-import java.net.URI
 import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
@@ -75,6 +75,10 @@ class DashboardTaskInteractionHandler(
             confirmQuickRegisterV2(event)
             return true
         }
+        if (isV2Component(event.componentId, DashboardActionIds.ASSIGNMENT_V2_ADVANCED_PREFIX)) {
+            openQuickRegisterAdvancedGuide(event)
+            return true
+        }
         if (isV2Component(event.componentId, DashboardActionIds.ASSIGNMENT_V2_CANCEL_PREFIX)) {
             cancelQuickRegisterV2(event)
             return true
@@ -89,10 +93,23 @@ class DashboardTaskInteractionHandler(
             showTaskList(event)
             return true
         }
+        if (parsed.domain == "task" && parsed.action == "detail") {
+            showTaskDetail(event, parsed.tailAt(0))
+            return true
+        }
+        if (parsed.domain == "task" && parsed.action == "edit") {
+            showTaskEditGuide(event, parsed.tailAt(0))
+            return true
+        }
         return false
     }
 
     override fun onStringSelect(event: StringSelectInteractionEvent): Boolean {
+        val reminderDraftId = extractDraftId(event.componentId, DashboardActionIds.ASSIGNMENT_V2_REMINDER_SELECT_PREFIX)
+        if (reminderDraftId != null) {
+            handleReminderPresetSelection(event, reminderDraftId)
+            return true
+        }
         if (!isV2Component(event.componentId, DashboardActionIds.ASSIGNMENT_V2_MENTION_SELECT_PREFIX)) {
             return false
         }
@@ -151,6 +168,65 @@ class DashboardTaskInteractionHandler(
             },
         )
         return true
+    }
+
+    private fun handleReminderPresetSelection(
+        event: StringSelectInteractionEvent,
+        draftId: String,
+    ) {
+        val guild = event.guild ?: run {
+            event.reply("길드에서만 사용할 수 있습니다.").setEphemeral(true).queue()
+            return
+        }
+        val member = event.member ?: run {
+            event.reply("길드에서만 사용할 수 있습니다.").setEphemeral(true).queue()
+            return
+        }
+
+        interactionReliabilityGuard.safeDefer(
+            interaction = event,
+            preferUpdate = true,
+            onDeferred = { ctx ->
+                val draft = requireOwnedDraft(
+                    ctx = ctx,
+                    draftId = draftId,
+                    guildId = guild.idLong,
+                    userId = member.idLong,
+                ) ?: return@safeDefer
+                val selected = event.values.firstOrNull()
+                if (selected == REMINDER_PRESET_CUSTOM) {
+                    renderV2Draft(
+                        ctx = ctx,
+                        guild = guild,
+                        draft = draft,
+                        notice = "사용자설정은 고급옵션에서 지원합니다. 현재는 기본/24h/3h/1h 프리셋을 선택해 주세요.",
+                    )
+                    return@safeDefer
+                }
+                val preReminderHoursRaw = resolvePreReminderHoursRaw(selected)
+                val updated = quickDraftService.updateSelection(
+                    draftId = draft.id,
+                    preReminderHoursRaw = preReminderHoursRaw,
+                    overridePreReminderHoursRaw = true,
+                ) ?: run {
+                    interactionReliabilityGuard.safeEditReply(ctx, "초안이 만료되었습니다. 다시 등록을 시작해 주세요.")
+                    return@safeDefer
+                }
+                logQuickRegisterSelectionUpdated(
+                    guildId = guild.idLong,
+                    userId = member.idLong,
+                    draft = updated,
+                    selectionType = QuickRegisterSelectionType.REMINDER,
+                )
+                renderV2Draft(ctx, guild, updated)
+            },
+            onFailure = { ctx, _ ->
+                interactionReliabilityGuard.safeFailureReply(
+                    ctx = ctx,
+                    alternativeCommandGuide = "과제 빠른 등록을 다시 시작해 주세요.",
+                )
+            },
+        )
     }
 
     override fun onEntitySelect(event: EntitySelectInteractionEvent): Boolean {
@@ -330,18 +406,12 @@ class DashboardTaskInteractionHandler(
             .setPlaceholder("예) 2026-03-05 (미입력 시 내일 23:59)")
             .setMaxLength(10)
             .build()
-        val remindOption = TextInput.create(V2_REMIND_OPTION_KEY, TextInputStyle.SHORT)
-            .setRequired(false)
-            .setPlaceholder("예) 2026-03-04 20:00 / 6h / 24,3,1")
-            .setMaxLength(32)
-            .build()
 
-        val modal = Modal.create(DashboardActionIds.ASSIGNMENT_MODAL_V2, "과제 빠른 등록 (V2)")
+        val modal = Modal.create(DashboardActionIds.ASSIGNMENT_MODAL_V2, "빠른 과제 생성")
             .addComponents(
                 Label.of("제목", title),
-                Label.of("링크 (선택)", link),
                 Label.of("마감일 (선택)", dueDate),
-                Label.of("알림 시간/옵션 (선택)", remindOption),
+                Label.of("링크 (선택)", link),
             )
             .build()
         event.replyModal(modal).queue()
@@ -380,6 +450,96 @@ class DashboardTaskInteractionHandler(
                 interactionReliabilityGuard.safeFailureReply(
                     ctx = ctx,
                     alternativeCommandGuide = "`/과제 목록` 명령으로 다시 시도해 주세요.",
+                )
+            },
+        )
+    }
+
+    private fun showTaskDetail(event: ButtonInteractionEvent, rawTaskId: String?) {
+        val guild = event.guild ?: run {
+            event.reply("길드에서만 사용할 수 있습니다.").setEphemeral(true).queue()
+            return
+        }
+        val taskId = rawTaskId?.toLongOrNull() ?: run {
+            event.reply("과제 ID를 확인할 수 없습니다.").setEphemeral(true).queue()
+            return
+        }
+
+        interactionReliabilityGuard.safeDefer(
+            interaction = event,
+            preferUpdate = false,
+            onDeferred = { ctx ->
+                CompletableFuture.runAsync {
+                    when (val result = assignmentTaskService.detail(guild.idLong, taskId)) {
+                        AssignmentTaskService.DetailResult.NotFound -> {
+                            interactionReliabilityGuard.safeEditReply(ctx, "해당 과제를 찾을 수 없습니다. (ID: $taskId)")
+                        }
+
+                        is AssignmentTaskService.DetailResult.Success -> {
+                            val task = result.task
+                            val preHours = task.preRemindHours.sortedDescending().joinToString(",")
+                            val roleDisplay = task.notifyRoleId?.let { "<@&$it>" } ?: "없음"
+                            val closingMessage = task.closingMessage ?: "(기본 메시지 사용)"
+                            interactionReliabilityGuard.safeEditReply(
+                                ctx,
+                                "과제 상세\n" +
+                                    "- ID: ${task.id}\n" +
+                                    "- 상태: ${statusLabel(task.status)}\n" +
+                                    "- 제목: ${task.title}\n" +
+                                    "- 알림 채널: <#${task.channelId}>\n" +
+                                    "- 알림 역할: $roleDisplay\n" +
+                                    "- 알림(KST): ${KstTime.formatInstantToKst(task.remindAt)}\n" +
+                                    "- 마감(KST): ${KstTime.formatInstantToKst(task.dueAt)}\n" +
+                                    "- 임박알림(시간): $preHours\n" +
+                                    "- 마감메시지: $closingMessage\n" +
+                                    "- 링크: ${task.verifyUrl ?: "(미입력)"}",
+                            )
+                        }
+                    }
+                }
+            },
+            onFailure = { ctx, _ ->
+                interactionReliabilityGuard.safeFailureReply(
+                    ctx = ctx,
+                    alternativeCommandGuide = "`/과제 상세 아이디:${taskId}` 명령으로 다시 시도해 주세요.",
+                )
+            },
+        )
+    }
+
+    private fun showTaskEditGuide(event: ButtonInteractionEvent, rawTaskId: String?) {
+        val guild = event.guild
+        val member = event.member
+        if (guild == null || member == null) {
+            event.reply("길드에서만 사용할 수 있습니다.").setEphemeral(true).queue()
+            return
+        }
+        val taskId = rawTaskId?.toLongOrNull() ?: run {
+            event.reply("과제 ID를 확인할 수 없습니다.").setEphemeral(true).queue()
+            return
+        }
+        if (!permissionGate.canAdminAction(guild.idLong, member)) {
+            event.reply("과제 수정 가이드는 운영진만 사용할 수 있습니다.").setEphemeral(true).queue()
+            return
+        }
+
+        interactionReliabilityGuard.safeDefer(
+            interaction = event,
+            preferUpdate = false,
+            onDeferred = { ctx ->
+                interactionReliabilityGuard.safeEditReply(
+                    ctx,
+                    "과제 수정 가이드\n" +
+                        "• 현재 상세 확인: `/과제 상세 아이디:${taskId}`\n" +
+                        "• 과제 취소(레거시 호환): `/과제 삭제 아이디:${taskId}`\n" +
+                        "• 새 값으로 재등록: `/과제 등록` (V2 모달)\n" +
+                        "※ 인라인 수정 UI는 다음 단계에서 제공 예정입니다.",
+                )
+            },
+            onFailure = { ctx, _ ->
+                interactionReliabilityGuard.safeFailureReply(
+                    ctx = ctx,
+                    alternativeCommandGuide = "`/과제 상세 아이디:${taskId}`로 먼저 확인해 주세요.",
                 )
             },
         )
@@ -521,13 +681,10 @@ class DashboardTaskInteractionHandler(
                         interactionReliabilityGuard.safeEditReply(ctx, "마감일 형식이 올바르지 않습니다. 예: 2026-03-05")
                         return@runAsync
                     }
-
-                    val remindOptionRaw = event.getValue(V2_REMIND_OPTION_KEY)?.asString
-                    val reminderConfig = resolveReminderConfig(remindOptionRaw, dueAtUtc, nowUtc)
-                    if (reminderConfig == null) {
-                        interactionReliabilityGuard.safeEditReply(ctx, "알림 시간/옵션 형식이 올바르지 않습니다. 예: 2026-03-04 20:00 또는 6h 또는 24,3,1")
-                        return@runAsync
-                    }
+                    val reminderConfig = ReminderConfig(
+                        remindAtUtc = defaultRemindAt(dueAtUtc, nowUtc),
+                        preReminderHoursRaw = null,
+                    )
                     if (!reminderConfig.remindAtUtc.isAfter(nowUtc)) {
                         interactionReliabilityGuard.safeEditReply(ctx, "알림시각이 현재보다 미래여야 합니다.")
                         return@runAsync
@@ -652,8 +809,6 @@ class DashboardTaskInteractionHandler(
 
                     val verifyUrl = resolveVerifyUrl(
                         rawLink = draft.link,
-                        guildId = guild.idLong,
-                        channelId = channel.idLong,
                     )
 
                     val result = assignmentTaskService.create(
@@ -743,6 +898,45 @@ class DashboardTaskInteractionHandler(
         )
     }
 
+    private fun openQuickRegisterAdvancedGuide(event: ButtonInteractionEvent) {
+        val guild = event.guild
+        val member = event.member
+        if (guild == null || member == null) {
+            event.reply("길드에서만 사용할 수 있습니다.").setEphemeral(true).queue()
+            return
+        }
+        val draftId = extractDraftId(event.componentId, DashboardActionIds.ASSIGNMENT_V2_ADVANCED_PREFIX)
+            ?: run {
+                event.reply("초안 식별자를 찾지 못했습니다.").setEphemeral(true).queue()
+                return
+            }
+
+        interactionReliabilityGuard.safeDefer(
+            interaction = event,
+            preferUpdate = true,
+            onDeferred = { ctx ->
+                val draft = requireOwnedDraft(
+                    ctx = ctx,
+                    draftId = draftId,
+                    guildId = guild.idLong,
+                    userId = member.idLong,
+                ) ?: return@safeDefer
+                renderV2Draft(
+                    ctx = ctx,
+                    guild = guild,
+                    draft = draft,
+                    notice = "고급옵션 안내: 직접 알림 문자열/마감 메시지/커스텀 알림시각은 다음 단계에서 지원합니다.",
+                )
+            },
+            onFailure = { ctx, _ ->
+                interactionReliabilityGuard.safeFailureReply(
+                    ctx = ctx,
+                    alternativeCommandGuide = "과제 빠른 등록을 다시 시작해 주세요.",
+                )
+            },
+        )
+    }
+
     private fun renderV2Draft(
         ctx: InteractionReliabilityGuard.InteractionCtx,
         guild: Guild,
@@ -766,19 +960,19 @@ class DashboardTaskInteractionHandler(
         val channelMention = "<#${draft.selectedChannelId}>"
         val roleMention = draft.selectedRoleId?.let { "<@&$it>" } ?: "없음"
         val mentionText = resolveMentionText(draft.mentionEnabled)
-        val reminderOptions = draft.preReminderHoursRaw ?: "기본값(24,3,1)"
+        val reminderPresetText = resolveReminderPresetText(draft.preReminderHoursRaw)
         val preview = EmbedBuilder()
             .setColor(Color(0x2D9CDB))
             .setTitle("과제 등록 미리보기")
-            .setDescription("등록 확정 전에 채널/역할/멘션 여부를 확인하세요.")
+            .setDescription("기본값(알림시각/임박알림)이 자동 적용되었습니다. 등록 전에 채널/역할/멘션을 확인하세요.")
             .addField("제목", draft.title, false)
-            .addField("링크", draft.link ?: "(미입력: Discord 채널 링크 사용)", false)
+            .addField("링크", draft.link ?: "(미입력)", false)
             .addField("알림 채널", channelMention, true)
             .addField("알림 역할", roleMention, true)
             .addField("멘션 여부", mentionText, true)
             .addField("알림시각(KST)", KstTime.formatInstantToKst(draft.remindAtUtc), true)
             .addField("마감시각(KST)", KstTime.formatInstantToKst(draft.dueAtUtc), true)
-            .addField("임박알림 옵션", reminderOptions, true)
+            .addField("알림 프리셋", reminderPresetText, true)
             .build()
 
         val channelSelect = EntitySelectMenu.create(
@@ -816,18 +1010,41 @@ class DashboardTaskInteractionHandler(
             )
             .build()
 
+        val reminderPresetSelect = StringSelectMenu.create("${DashboardActionIds.ASSIGNMENT_V2_REMINDER_SELECT_PREFIX}:${draft.id}")
+            .setPlaceholder("알림 프리셋")
+            .addOptions(
+                SelectOption.of("기본값 (24h/3h/1h)", REMINDER_PRESET_DEFAULT)
+                    .withDescription("기본 임박 알림 설정을 사용합니다.")
+                    .withDefault(draft.preReminderHoursRaw == null),
+                SelectOption.of("24h 전", REMINDER_PRESET_24H)
+                    .withDescription("마감 24시간 전에 알림을 보냅니다.")
+                    .withDefault(draft.preReminderHoursRaw == "24"),
+                SelectOption.of("3h 전", REMINDER_PRESET_3H)
+                    .withDescription("마감 3시간 전에 알림을 보냅니다.")
+                    .withDefault(draft.preReminderHoursRaw == "3"),
+                SelectOption.of("1h 전", REMINDER_PRESET_1H)
+                    .withDescription("마감 1시간 전에 알림을 보냅니다.")
+                    .withDefault(draft.preReminderHoursRaw == "1"),
+                SelectOption.of("사용자설정", REMINDER_PRESET_CUSTOM)
+                    .withDescription("고급옵션에서 직접 설정합니다.")
+                    .withDefault(isCustomReminderPreset(draft.preReminderHoursRaw)),
+            )
+            .build()
+
         val components = listOf(
             ActionRow.of(channelSelect),
             ActionRow.of(roleSelect),
             ActionRow.of(mentionSelect),
+            ActionRow.of(reminderPresetSelect),
             ActionRow.of(
                 Button.success("${DashboardActionIds.ASSIGNMENT_V2_CONFIRM_PREFIX}:${draft.id}", "등록 확정"),
+                Button.secondary("${DashboardActionIds.ASSIGNMENT_V2_ADVANCED_PREFIX}:${draft.id}", "고급옵션"),
                 Button.danger("${DashboardActionIds.ASSIGNMENT_V2_CANCEL_PREFIX}:${draft.id}", "취소"),
             ),
         )
 
         val message = buildString {
-            append("과제 빠른 등록 V2 설정을 선택해 주세요.")
+            append("빠른 과제 생성 2단계: 자동 채워진 기본값을 확인해 주세요.")
             if (!notice.isNullOrBlank()) {
                 append("\n")
                 append(notice)
@@ -867,49 +1084,6 @@ class DashboardTaskInteractionHandler(
         }
         val localDate = runCatching { LocalDate.parse(raw.trim()) }.getOrNull() ?: return null
         return localDate.atTime(LocalTime.of(23, 59)).atZone(KST_ZONE).toInstant()
-    }
-
-    private fun resolveReminderConfig(raw: String?, dueAtUtc: Instant, nowUtc: Instant): ReminderConfig? {
-        val trimmed = raw?.trim().orEmpty()
-        if (trimmed.isBlank()) {
-            return ReminderConfig(
-                remindAtUtc = defaultRemindAt(dueAtUtc, nowUtc),
-                preReminderHoursRaw = null,
-            )
-        }
-
-        val asAbsolute = runCatching { KstTime.parseKstToInstant(trimmed) }.getOrNull()
-        if (asAbsolute != null) {
-            return ReminderConfig(
-                remindAtUtc = normalizeRemindAt(asAbsolute, dueAtUtc, nowUtc) ?: return null,
-                preReminderHoursRaw = null,
-            )
-        }
-
-        val relativeHours = RELATIVE_HOURS_REGEX.matchEntire(trimmed)
-            ?.groupValues
-            ?.getOrNull(1)
-            ?.toLongOrNull()
-        if (relativeHours != null && relativeHours in 1..168) {
-            val remindAt = dueAtUtc.minusSeconds(relativeHours * 3600)
-            return ReminderConfig(
-                remindAtUtc = normalizeRemindAt(remindAt, dueAtUtc, nowUtc) ?: return null,
-                preReminderHoursRaw = null,
-            )
-        }
-
-        if (COMMA_HOURS_REGEX.matches(trimmed)) {
-            val parsed = assignmentTaskService.parsePreReminderHours(trimmed) ?: return null
-            val preReminderRaw = parsed.sortedDescending().joinToString(",")
-            val maxHour = parsed.maxOrNull() ?: return null
-            val remindAt = dueAtUtc.minusSeconds(maxHour.toLong() * 3600)
-            return ReminderConfig(
-                remindAtUtc = normalizeRemindAt(remindAt, dueAtUtc, nowUtc) ?: return null,
-                preReminderHoursRaw = preReminderRaw,
-            )
-        }
-
-        return null
     }
 
     private fun defaultRemindAt(dueAtUtc: Instant, nowUtc: Instant): Instant {
@@ -983,21 +1157,12 @@ class DashboardTaskInteractionHandler(
         return guild.selfMember.hasPermission(channel, Permission.MESSAGE_MENTION_EVERYONE)
     }
 
-    private fun resolveVerifyUrl(rawLink: String?, guildId: Long, channelId: Long): String {
-        val fallback = "https://discord.com/channels/$guildId/$channelId"
-        val trimmed = rawLink?.trim().orEmpty()
-        if (trimmed.isBlank()) {
-            return fallback
+    private fun resolveVerifyUrl(rawLink: String?): String? {
+        val trimmed = rawLink?.trim()
+        if (trimmed.isNullOrBlank()) {
+            return null
         }
-        val uri = runCatching { URI(trimmed) }.getOrNull() ?: return fallback
-        val scheme = uri.scheme?.lowercase() ?: return fallback
-        if (scheme != "http" && scheme != "https") {
-            return fallback
-        }
-        if (uri.host.isNullOrBlank()) {
-            return fallback
-        }
-        return uri.toString()
+        return trimmed
     }
 
     private fun parseChannelId(raw: String, guild: Guild): Long? {
@@ -1074,6 +1239,42 @@ class DashboardTaskInteractionHandler(
         return "안함"
     }
 
+    private fun resolveReminderPresetText(preReminderHoursRaw: String?): String {
+        return when (preReminderHoursRaw) {
+            null -> "기본값 (24h/3h/1h)"
+            "24" -> "24h 전"
+            "3" -> "3h 전"
+            "1" -> "1h 전"
+            else -> "사용자설정 ($preReminderHoursRaw)"
+        }
+    }
+
+    private fun resolvePreReminderHoursRaw(selected: String?): String? {
+        return when (selected) {
+            REMINDER_PRESET_DEFAULT -> null
+            REMINDER_PRESET_24H -> "24"
+            REMINDER_PRESET_3H -> "3"
+            REMINDER_PRESET_1H -> "1"
+            else -> null
+        }
+    }
+
+    private fun isCustomReminderPreset(preReminderHoursRaw: String?): Boolean {
+        if (preReminderHoursRaw == null) {
+            return false
+        }
+        return preReminderHoursRaw !in setOf("24", "3", "1")
+    }
+
+    private fun statusLabel(status: AssignmentStatus): String {
+        return when (status) {
+            AssignmentStatus.PENDING -> "대기"
+            AssignmentStatus.DONE -> "완료"
+            AssignmentStatus.CANCELED -> "취소"
+            AssignmentStatus.CLOSED -> "종료"
+        }
+    }
+
     private fun logQuickRegisterSelectionUpdated(
         guildId: Long,
         userId: Long,
@@ -1147,7 +1348,9 @@ class DashboardTaskInteractionHandler(
                 "과제 목록: `/과제 목록`${quickRegisterDegradedLine(mentionDegraded)}",
             components = listOf(
                 ActionRow.of(
-                    Button.secondary(DashboardActionIds.ASSIGNMENT_LIST, "과제 목록 보기"),
+                    Button.secondary(DashboardActionIds.ASSIGNMENT_LIST, "목록 보기"),
+                    Button.secondary(HomeCustomIdParser.of("task", "detail", task.id.toString()), "상세 보기"),
+                    Button.secondary(HomeCustomIdParser.of("task", "edit", task.id.toString()), "수정"),
                 ),
             ),
         )
@@ -1322,6 +1525,7 @@ class DashboardTaskInteractionHandler(
         MENTION("mention"),
         CHANNEL("channel"),
         ROLE("role"),
+        REMINDER("reminder"),
     }
 
     private enum class QuickRegisterConfirmReason {
@@ -1344,16 +1548,18 @@ class DashboardTaskInteractionHandler(
         private val CHANNEL_NAME_REGEX = Regex("""#([^\s>]+)""")
         private val ROLE_NAME_REGEX = Regex("""@([^\s>]+)""")
         private val ROLE_HINT_REGEX = Regex("""<@&\d+>|@[^\s]+""")
-        private val RELATIVE_HOURS_REGEX = Regex("""^(\\d{1,3})\s*(?:h|시간|시간전|h전)$""")
-        private val COMMA_HOURS_REGEX = Regex("""^[0-9,\s]+$""")
         private val KST_ZONE: ZoneId = ZoneId.of("Asia/Seoul")
 
         private const val V2_TITLE_KEY = "제목"
         private const val V2_LINK_KEY = "링크"
         private const val V2_DUE_DATE_KEY = "마감일"
-        private const val V2_REMIND_OPTION_KEY = "알림옵션"
 
         private const val MENTION_ON = "on"
         private const val MENTION_OFF = "off"
+        private const val REMINDER_PRESET_DEFAULT = "default"
+        private const val REMINDER_PRESET_24H = "24h"
+        private const val REMINDER_PRESET_3H = "3h"
+        private const val REMINDER_PRESET_1H = "1h"
+        private const val REMINDER_PRESET_CUSTOM = "custom"
     }
 }

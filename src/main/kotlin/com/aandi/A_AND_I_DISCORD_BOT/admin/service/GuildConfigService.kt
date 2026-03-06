@@ -118,6 +118,14 @@ class GuildConfigService(
     }
 
     @Transactional
+    fun setDashboardChannel(guildId: Long, channelId: Long): GuildConfig {
+        val config = getOrCreate(guildId)
+        config.dashboardChannelId = channelId
+        config.dashboardMessageId = null
+        return guildConfigRepository.save(config)
+    }
+
+    @Transactional
     fun clearDashboardMessage(guildId: Long): GuildConfig {
         val config = getOrCreate(guildId)
         config.dashboardMessageId = null
@@ -148,6 +156,26 @@ class GuildConfigService(
         config.defaultTaskChannelId = defaultTaskChannelId
         config.defaultNotifyRoleId = defaultNotifyRoleId
         return guildConfigRepository.save(config)
+    }
+
+    @Transactional
+    fun setDefaultNotifyRole(guildId: Long, roleId: Long): GuildConfig {
+        val config = getOrCreate(guildId)
+        config.defaultNotifyRoleId = roleId
+        return guildConfigRepository.save(config)
+    }
+
+    @Transactional
+    fun clearDefaultNotifyRole(guildId: Long): GuildConfig {
+        val config = getOrCreate(guildId)
+        config.defaultNotifyRoleId = null
+        return guildConfigRepository.save(config)
+    }
+
+    @Transactional
+    fun getDefaultNotifyRole(guildId: Long): Long? {
+        val config = getOrCreate(guildId)
+        return config.defaultNotifyRoleId
     }
 
     data class DashboardConfig(
