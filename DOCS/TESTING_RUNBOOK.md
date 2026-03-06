@@ -57,6 +57,10 @@
 - [ ] 운영진 역할 미설정 fallback(Manage Server/Administrator) 테스트가 있다
 - [ ] DB 연동 변경 시 repository 또는 슬라이스 테스트가 있다
 - [ ] 동시성 쿼리(FOR UPDATE SKIP LOCKED)는 가능하면 Testcontainers 통합 테스트로 검증한다
+- [ ] 회의 동시성 정책(채널별 ACTIVE 1개)이 테스트로 검증된다
+- [ ] 서로 다른 채널 동시 회의 시작 허용 / 동일 채널 중복 시작 차단이 검증된다
+- [ ] `/회의 종료`는 `회의아이디` 기준으로 대상 세션만 종료되는지 검증된다
+- [ ] 스레드 밖 구조화 명령은 `회의아이디` 미입력 시 거부되는지 검증된다
 - [ ] Discord/JDA는 테스트에서 비활성화되어 있다
 - [ ] 테스트 프로파일에서 스케줄링이 비활성화되어 있다(`spring.task.scheduling.enabled=false`)
 - [ ] Voice Summary는 `enabled=false`에서 start/stop/status가 차단되는 테스트가 있다
