@@ -3,13 +3,19 @@ name: PR CI
 on:
   pull_request:
     branches:
+      - develop
       - main
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: pr-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  test:
+  verify:
     runs-on: ubuntu-latest
 
     steps:
@@ -25,5 +31,5 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Run tests
-        run: ./gradlew test
+      - name: Run Gradle check
+        run: ./gradlew check
