@@ -7,6 +7,7 @@ import com.aandi.A_AND_I_DISCORD_BOT.common.time.PeriodCalculator
 import com.aandi.A_AND_I_DISCORD_BOT.common.time.PeriodType
 import com.aandi.A_AND_I_DISCORD_BOT.mogakco.entity.VoiceSession
 import com.aandi.A_AND_I_DISCORD_BOT.mogakco.repository.MogakcoChannelRepository
+import com.aandi.A_AND_I_DISCORD_BOT.mogakco.repository.VoiceSessionDailyRollupRepository
 import com.aandi.A_AND_I_DISCORD_BOT.mogakco.repository.VoiceSessionRepository
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
@@ -24,6 +25,7 @@ class MogakcoServiceStatisticsTest {
     private val guildConfigRepository: GuildConfigRepository = Mockito.mock(GuildConfigRepository::class.java)
     private val mogakcoChannelRepository: MogakcoChannelRepository = Mockito.mock(MogakcoChannelRepository::class.java)
     private val voiceSessionRepository: VoiceSessionRepository = Mockito.mock(VoiceSessionRepository::class.java)
+    private val voiceSessionDailyRollupRepository: VoiceSessionDailyRollupRepository = Mockito.mock(VoiceSessionDailyRollupRepository::class.java)
     private val permissionChecker: PermissionChecker = Mockito.mock(PermissionChecker::class.java)
     private val testClock = Clock.fixed(Instant.parse("2026-02-24T03:00:00Z"), ZoneOffset.UTC)
     private val periodCalculator = PeriodCalculator("Asia/Seoul", testClock)
@@ -32,6 +34,7 @@ class MogakcoServiceStatisticsTest {
         guildConfigRepository = guildConfigRepository,
         mogakcoChannelRepository = mogakcoChannelRepository,
         voiceSessionRepository = voiceSessionRepository,
+        voiceSessionDailyRollupRepository = voiceSessionDailyRollupRepository,
         periodCalculator = periodCalculator,
         permissionChecker = permissionChecker,
         clock = testClock,
@@ -41,6 +44,7 @@ class MogakcoServiceStatisticsTest {
     fun `leaderboard sums only overlapped duration when sessions cross period boundaries`() {
         val guildId = 100L
         val now = Instant.parse("2026-02-24T03:00:00Z")
+        val zoneId = ZoneId.of("Asia/Seoul")
         val window = periodCalculator.currentWindow(PeriodType.WEEK, now)
         val sessions = listOf(
             VoiceSession(
@@ -66,13 +70,30 @@ class MogakcoServiceStatisticsTest {
             ),
         )
 
+        val todayStart = now.atZone(zoneId).toLocalDate().atStartOfDay(zoneId).toInstant()
+        val liveStart = maxOf(window.startInclusive, todayStart)
+        val historyEnd = minOf(todayStart, window.measureEndExclusive)
+
         Mockito.`when`(
-            voiceSessionRepository.findSessionsInRange(
+            voiceSessionRepository.findClosedSessionsInRange(
                 guildId,
-                window.startInclusive,
+                liveStart,
                 window.measureEndExclusive,
             ),
-        ).thenReturn(sessions)
+        ).thenReturn(sessions.filter { it.leftAt != null })
+        Mockito.`when`(
+            voiceSessionRepository.findOpenSessionsInRange(
+                guildId,
+                window.measureEndExclusive,
+            ),
+        ).thenReturn(sessions.filter { it.leftAt == null })
+        Mockito.`when`(
+            voiceSessionDailyRollupRepository.aggregateUserTotals(
+                guildId,
+                window.startInclusive.atZone(zoneId).toLocalDate(),
+                historyEnd.atZone(zoneId).toLocalDate(),
+            ),
+        ).thenReturn(emptyList())
 
         val result = service.getLeaderboard(guildId = guildId, period = PeriodType.WEEK, top = 10, now = now)
 
@@ -102,13 +123,30 @@ class MogakcoServiceStatisticsTest {
             ),
         )
 
+        val todayStart = now.atZone(zoneId).toLocalDate().atStartOfDay(zoneId).toInstant()
+        val liveStart = maxOf(window.startInclusive, todayStart)
+        val historyEnd = minOf(todayStart, window.measureEndExclusive)
         Mockito.`when`(
-            voiceSessionRepository.findSessionsInRange(
+            voiceSessionRepository.findClosedSessionsInRange(
                 guildId,
-                window.startInclusive,
+                liveStart,
                 window.measureEndExclusive,
             ),
-        ).thenReturn(sessions)
+        ).thenReturn(sessions.filter { it.leftAt != null })
+        Mockito.`when`(
+            voiceSessionRepository.findOpenSessionsInRange(
+                guildId,
+                window.measureEndExclusive,
+            ),
+        ).thenReturn(sessions.filter { it.leftAt == null })
+        Mockito.`when`(
+            voiceSessionDailyRollupRepository.findUserDailyTotals(
+                guildId,
+                userId,
+                window.startInclusive.atZone(zoneId).toLocalDate(),
+                historyEnd.atZone(zoneId).toLocalDate(),
+            ),
+        ).thenReturn(emptyList())
         Mockito.`when`(guildConfigRepository.findById(guildId)).thenReturn(
             Optional.of(
                 GuildConfig(
@@ -131,6 +169,7 @@ class MogakcoServiceStatisticsTest {
         val guildId = 201L
         val userId = 334L
         val now = Instant.parse("2026-02-24T03:00:00Z")
+        val zoneId = ZoneId.of("Asia/Seoul")
         val window = periodCalculator.currentWindow(PeriodType.DAY, now)
         val sessions = listOf(
             VoiceSession(
@@ -142,13 +181,30 @@ class MogakcoServiceStatisticsTest {
             ),
         )
 
+        val todayStart = now.atZone(zoneId).toLocalDate().atStartOfDay(zoneId).toInstant()
+        val liveStart = maxOf(window.startInclusive, todayStart)
+        val historyEnd = minOf(todayStart, window.measureEndExclusive)
         Mockito.`when`(
-            voiceSessionRepository.findSessionsInRange(
+            voiceSessionRepository.findClosedSessionsInRange(
                 guildId,
-                window.startInclusive,
+                liveStart,
                 window.measureEndExclusive,
             ),
-        ).thenReturn(sessions)
+        ).thenReturn(sessions.filter { it.leftAt != null })
+        Mockito.`when`(
+            voiceSessionRepository.findOpenSessionsInRange(
+                guildId,
+                window.measureEndExclusive,
+            ),
+        ).thenReturn(sessions.filter { it.leftAt == null })
+        Mockito.`when`(
+            voiceSessionDailyRollupRepository.findUserDailyTotals(
+                guildId,
+                userId,
+                window.startInclusive.atZone(zoneId).toLocalDate(),
+                historyEnd.atZone(zoneId).toLocalDate(),
+            ),
+        ).thenReturn(emptyList())
         Mockito.`when`(guildConfigRepository.findById(guildId)).thenReturn(
             Optional.of(
                 GuildConfig(

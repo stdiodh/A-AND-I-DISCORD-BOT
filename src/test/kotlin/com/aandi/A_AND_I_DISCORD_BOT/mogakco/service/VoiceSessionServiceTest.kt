@@ -20,9 +20,11 @@ class VoiceSessionServiceTest : FunSpec({
 
     val mogakcoChannelRepository = mockk<MogakcoChannelRepository>()
     val voiceSessionRepository = mockk<VoiceSessionRepository>()
+    val voiceSessionDailyRollupService = mockk<VoiceSessionDailyRollupService>()
     val service = VoiceSessionService(
         mogakcoChannelRepository = mogakcoChannelRepository,
         voiceSessionRepository = voiceSessionRepository,
+        voiceSessionDailyRollupService = voiceSessionDailyRollupService,
         clock = Clock.fixed(Instant.parse("2026-02-24T03:00:00Z"), ZoneOffset.UTC),
     )
 
@@ -36,6 +38,7 @@ class VoiceSessionServiceTest : FunSpec({
         clearAllMocks()
         every { mogakcoChannelRepository.existsByIdGuildIdAndIdChannelId(any(), any()) } returns false
         every { voiceSessionRepository.save(any()) } answers { firstArg() }
+        every { voiceSessionDailyRollupService.accumulate(any(), any(), any(), any()) } returns Unit
     }
 
     test("Join-old null new tracked이면 열린 세션을 생성한다") {

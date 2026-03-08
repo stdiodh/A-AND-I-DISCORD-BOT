@@ -27,8 +27,8 @@ class AssignmentTaskEntity(
     @Column(name = "title", nullable = false, length = 200)
     var title: String = "",
 
-    @Column(name = "verify_url", nullable = false)
-    var verifyUrl: String = "",
+    @Column(name = "verify_url")
+    var verifyUrl: String? = null,
 
     @Column(name = "remind_at", nullable = false)
     var remindAt: Instant = Instant.now(),
@@ -66,4 +66,7 @@ class AssignmentTaskEntity(
 
     @Column(name = "notified_at")
     var notifiedAt: Instant? = null,
+
+    @Column(name = "next_fire_at")
+    var nextFireAt: Instant? = null,
 )

@@ -4,7 +4,6 @@ import com.aandi.A_AND_I_DISCORD_BOT.admin.service.GuildConfigService
 import com.aandi.A_AND_I_DISCORD_BOT.agenda.service.AgendaService
 import com.aandi.A_AND_I_DISCORD_BOT.assignment.service.AssignmentTaskService
 import com.aandi.A_AND_I_DISCORD_BOT.common.config.FeatureFlagsProperties
-import com.aandi.A_AND_I_DISCORD_BOT.common.format.DurationFormatter
 import com.aandi.A_AND_I_DISCORD_BOT.common.log.StructuredLog
 import com.aandi.A_AND_I_DISCORD_BOT.common.time.KstTime
 import com.aandi.A_AND_I_DISCORD_BOT.common.time.PeriodType
@@ -28,8 +27,6 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.awt.Color
 import java.time.Clock
-import java.time.ZoneId
-import java.time.temporal.ChronoUnit
 
 @Service
 @ConditionalOnProperty(name = ["discord.enabled"], havingValue = "true", matchIfMissing = true)
@@ -39,7 +36,6 @@ class HomeDashboardService(
     private val assignmentTaskService: AssignmentTaskService,
     private val mogakcoService: MogakcoService,
     private val meetingSessionRepository: MeetingSessionRepository,
-    private val durationFormatter: DurationFormatter,
     private val renderer: DashboardRenderer,
     private val homeDashboardComponentBuilder: HomeDashboardComponentBuilder,
     private val homeMessageManager: HomeMessageManager,
@@ -244,46 +240,50 @@ class HomeDashboardService(
             guildId,
             MeetingSessionStatus.ACTIVE,
         )
-        val lastSession = meetingSessionRepository.findFirstByGuildIdOrderByStartedAtDesc(guildId)
         val taskSnapshot = resolveTaskSnapshot(guildId)
-        val top3 = mogakcoService.getLeaderboard(guildId, PeriodType.WEEK, 3).entries
-            .map {
-                DashboardRenderer.MogakcoSummary(
-                    userId = it.userId,
-                    formattedDuration = durationFormatter.toHourMinute(it.totalSeconds),
-                )
-            }
+        val todayParticipantCount = mogakcoService.getLeaderboard(guildId, PeriodType.DAY, MOGAKCO_PARTICIPANT_COUNT_LIMIT)
+            .entries
+            .size
 
         val view = renderer.render(
             DashboardRenderer.DashboardInput(
                 guildName = guildName,
                 isMeetingActive = activeSession != null,
-                lastMeetingThreadId = lastSession?.threadId,
                 todayAgenda = agenda?.let { DashboardRenderer.AgendaSummary(title = it.title, url = it.url) },
                 pendingCount = taskSnapshot.pendingCount,
-                dueSoonTop3 = taskSnapshot.dueSoonTop3,
-                weeklyTop3 = top3,
+                nextDueTask = taskSnapshot.nextDueTask,
+                todayParticipantCount = todayParticipantCount,
             ),
         )
 
         val embed = EmbedBuilder()
             .setTitle(view.title)
             .setDescription(resolveOverviewDescription(view.overview))
+            .addField("오늘 상태", view.statusLine, false)
+            .addField("지금 해야 할 일", view.todoSection, false)
+            .apply {
+                val missingSetupItems = resolveMissingSetupItems(boardChannels)
+                if (missingSetupItems.isNotEmpty()) {
+                    addField(
+                        "설정이 더 필요해요",
+                        missingSetupItems.joinToString("\n") { "- $it" },
+                        false,
+                    )
+                }
+            }
             .addField("홈 고정 상태", homePinStatusLine, false)
             .addField("전용 채널", resolveBoardChannelSection(boardChannels), false)
-            .addField("회의 상태", view.meetingSection, false)
-            .addField("마감 임박 과제", view.assignmentSection, false)
-            .addField("이번 주 모각코", view.mogakcoSection, false)
             .setColor(Color(0x1F8B4C))
             .build()
 
-        val components = buildDashboardComponents(guildId, agenda?.url, boardChannels)
+        val components = buildDashboardComponents(guildId, activeSession?.threadId, agenda?.url, boardChannels)
 
         return DashboardBundle(embed = embed, components = components)
     }
 
     private fun buildDashboardComponents(
         guildId: Long,
+        activeMeetingThreadId: Long?,
         agendaUrl: String?,
         boardChannels: GuildConfigService.BoardChannelConfig,
     ): List<ActionRow> {
@@ -311,6 +311,7 @@ class HomeDashboardService(
 
         return homeDashboardComponentBuilder.buildHomeV2Components(
             guildId = guildId,
+            activeMeetingThreadId = activeMeetingThreadId,
             agendaUrl = agendaUrl,
             channelTargets = HomeDashboardComponentBuilder.ChannelTargets(
                 meetingChannelId = boardChannels.meetingChannelId,
@@ -319,8 +320,10 @@ class HomeDashboardService(
             ),
             moreMenuOptions = HomeDashboardComponentBuilder.MoreMenuOptions(
                 agendaValue = HOME_MORE_AGENDA,
-                mogakcoMeValue = HOME_MORE_MOGAKCO_ME,
-                settingsHelpValue = HOME_MORE_SETTINGS_HELP,
+                assignmentListValue = HOME_MORE_ASSIGNMENT_LIST,
+                mogakcoValue = HOME_MORE_MOGAKCO,
+                settingsValue = HOME_MORE_SETTINGS,
+                helpValue = HOME_MORE_HELP,
             ),
         )
     }
@@ -329,29 +332,20 @@ class HomeDashboardService(
         return when (val result = assignmentTaskService.list(guildId, "대기")) {
             is AssignmentTaskService.ListResult.Success -> {
                 val nowUtc = clock.instant()
-                val nowKstDate = nowUtc.atZone(KST_ZONE_ID).toLocalDate()
-                val dueSoon = result.tasks
+                val nextDue = result.tasks
                     .asSequence()
                     .filter { it.dueAt.isAfter(nowUtc) }
                     .sortedBy { it.dueAt }
-                    .mapNotNull { task ->
-                        val dueKst = task.dueAt.atZone(KST_ZONE_ID)
-                        val dayDiff = ChronoUnit.DAYS.between(nowKstDate, dueKst.toLocalDate()).toInt()
-                        if (dayDiff !in 0..2) {
-                            return@mapNotNull null
-                        }
+                    .firstOrNull()
+                    ?.let { task ->
                         DashboardRenderer.DueTaskSummary(
-                            id = task.id,
                             title = task.title,
-                            ddayLabel = resolveDdayLabel(dayDiff),
                             dueAtKst = KstTime.formatInstantToKst(task.dueAt),
                         )
                     }
-                    .take(3)
-                    .toList()
                 TaskSnapshot(
                     pendingCount = result.tasks.size,
-                    dueSoonTop3 = dueSoon,
+                    nextDueTask = nextDue,
                 )
             }
 
@@ -359,14 +353,14 @@ class HomeDashboardService(
             AssignmentTaskService.ListResult.HiddenDeleted,
             -> TaskSnapshot(
                 pendingCount = null,
-                dueSoonTop3 = emptyList(),
+                nextDueTask = null,
             )
         }
     }
 
     private data class TaskSnapshot(
         val pendingCount: Int?,
-        val dueSoonTop3: List<DashboardRenderer.DueTaskSummary>,
+        val nextDueTask: DashboardRenderer.DueTaskSummary?,
     )
 
     private fun pinIfPossible(guildId: Long, channelId: Long, messageId: Long): PinResult {
@@ -483,16 +477,9 @@ class HomeDashboardService(
 
     private fun resolveOverviewDescription(overview: String): String {
         if (featureFlags.homeV2) {
-            return "## 오늘 요약\n$overview"
+            return "## 상태판\n$overview"
         }
         return overview
-    }
-
-    private fun resolveDdayLabel(dayDiff: Int): String {
-        if (dayDiff == 0) {
-            return "D-DAY"
-        }
-        return "D-$dayDiff"
     }
 
     private fun resolvePinFailure(exception: Throwable): PinResult {
@@ -509,8 +496,15 @@ class HomeDashboardService(
         return "회의: $meeting\n모각코: $mogakco\n과제: $assignment"
     }
 
-    private fun channelJumpUrl(guildId: Long, channelId: Long): String {
-        return "https://discord.com/channels/$guildId/$channelId"
+    private fun resolveMissingSetupItems(config: GuildConfigService.BoardChannelConfig): List<String> {
+        val items = mutableListOf<String>()
+        if (config.meetingChannelId == null) {
+            items.add("회의 채널")
+        }
+        if (config.assignmentChannelId == null) {
+            items.add("과제 공지 채널")
+        }
+        return items
     }
 
     private data class DashboardBundle(
@@ -554,9 +548,13 @@ class HomeDashboardService(
     }
 
     companion object {
-        private val KST_ZONE_ID: ZoneId = ZoneId.of("Asia/Seoul")
         private const val PIN_STATUS_CHECKING = "홈 고정 상태: 🔄 고정 상태 확인 중...\n해결 방법: 잠시 후 결과가 자동 반영됩니다."
-        const val HOME_MORE_AGENDA = "agenda_set"
+        private const val MOGAKCO_PARTICIPANT_COUNT_LIMIT = 100
+        const val HOME_MORE_AGENDA = "agenda"
+        const val HOME_MORE_ASSIGNMENT_LIST = "assignment_list"
+        const val HOME_MORE_MOGAKCO = "mogakco"
+        const val HOME_MORE_SETTINGS = "settings"
+        const val HOME_MORE_HELP = "help"
         const val HOME_MORE_MOGAKCO_ME = "mogakco_me"
         const val HOME_MORE_SETTINGS_HELP = "settings_help"
     }

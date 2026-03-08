@@ -231,7 +231,7 @@ class MogakcoSlashCommandHandler(
 
         val boardChannel = guild.getTextChannelById(boardChannelId)
         if (boardChannel == null) {
-            replyInvalidInputError(event, "모각코 공지 채널을 찾지 못했습니다. `/설정 모각코채널`을 다시 설정해 주세요.")
+            replyInvalidInputError(event, "모각코 공지 채널을 찾지 못했습니다. `/설정 마법사 모각코채널:#모각코`로 다시 설정해 주세요.")
             return
         }
 
@@ -398,7 +398,7 @@ class MogakcoSlashCommandHandler(
             currentChannelId = event.channel.idLong,
             featureChannelId = mogakcoChannelId,
             featureName = "모각코",
-            setupCommand = "/설정 모각코채널 채널:#모각코",
+            setupCommand = "/설정 마법사 모각코채널:#모각코",
             usageCommand = "/모각코 오늘",
         )
         if (guardResult is HomeChannelGuard.GuardResult.Allowed) {

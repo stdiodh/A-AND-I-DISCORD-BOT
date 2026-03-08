@@ -37,7 +37,6 @@ assignment:
     poll-delay-ms: ${ASSIGNMENT_REMINDER_POLL_DELAY_MS:30000}
     grace-hours: ${ASSIGNMENT_REMINDER_GRACE_HOURS:24}
     max-per-tick: ${ASSIGNMENT_REMINDER_MAX_PER_TICK:20}
-    pre-scan-hours: ${ASSIGNMENT_REMINDER_PRE_SCAN_HOURS:24}
 
 voice:
   summary:
@@ -48,7 +47,7 @@ voice:
 feature:
   home-v2: ${FEATURE_HOME_V2:false}
   meeting-summary-v2: ${FEATURE_MEETING_SUMMARY_V2:true}
-  task-quickregister-v2: ${FEATURE_TASK_QUICKREGISTER_V2:false}
+  task-quickregister-v2: ${FEATURE_TASK_QUICKREGISTER_V2:true}
 
 logging:
   level:

@@ -38,11 +38,10 @@ class MeetingEndUseCase(
     fun endMeeting(
         guildId: Long,
         requestedBy: Long,
-        fallbackThreadId: Long?,
-        requestedThreadId: Long?,
+        meetingSessionId: Long,
         progress: ((MeetingService.SummaryProgress) -> Unit)? = null,
     ): MeetingService.EndResult {
-        val session = resolveSessionForEnd(guildId, fallbackThreadId, requestedThreadId)
+        val session = resolveSessionForEnd(guildId, meetingSessionId)
             ?: return MeetingService.EndResult.SessionNotFound
         val transition = meetingSessionStateMachine.end(session.status)
         if (transition is MeetingSessionStateMachine.Transition.Rejected) {
@@ -189,6 +188,36 @@ class MeetingEndUseCase(
         return applyManualMutation(session, thread, artifact, requestedBy)
     }
 
+    fun addManualTodo(
+        guildId: Long,
+        requestedBy: Long,
+        meetingSessionId: Long,
+        todo: String,
+    ): MeetingService.SummaryMutationResult {
+        val session = meetingSessionRepository.findById(meetingSessionId).orElse(null)
+            ?: return MeetingService.SummaryMutationResult.SessionNotFound
+        if (session.guildId != guildId) {
+            return MeetingService.SummaryMutationResult.SessionNotFound
+        }
+        val thread = meetingThreadGateway.findThreadChannel(session.threadId)
+            ?: return MeetingService.SummaryMutationResult.ThreadNotFound(session.threadId)
+        val normalized = todo.trim()
+        if (normalized.isBlank()) {
+            return MeetingService.SummaryMutationResult.ArtifactNotFound
+        }
+        val sessionId = session.id ?: return MeetingService.SummaryMutationResult.SessionNotFound
+        meetingStructuredItemService.addTodo(
+            meetingSessionId = sessionId,
+            guildId = session.guildId,
+            threadId = session.threadId,
+            content = normalized,
+            createdBy = requestedBy,
+        )
+        val artifact = meetingSummaryArtifactService.appendTodo(meetingSessionId, normalized)
+            ?: return MeetingService.SummaryMutationResult.ArtifactNotFound
+        return applyManualMutation(session, thread, artifact, requestedBy)
+    }
+
     private fun applyManualMutation(
         session: MeetingSessionEntity,
         thread: ThreadChannel,
@@ -251,6 +280,7 @@ class MeetingEndUseCase(
         thread: ThreadChannel,
         meetingEndBase: Instant,
         progress: ((MeetingService.SummaryProgress) -> Unit)?,
+        mode: String,
     ): GeneratedSummary {
         val summaryStartedAtMillis = System.currentTimeMillis()
         if (!featureFlags.meetingSummaryV2) {
@@ -302,6 +332,12 @@ class MeetingEndUseCase(
         val sessionId = session.id ?: throw IllegalStateException("meeting session id is null")
         val sourceWindowStart = session.startedAt
         val sourceWindowEnd = meetingEndBase.plusSeconds(SUMMARY_GRACE_SECONDS.toLong())
+        val checkpoint = resolveIncrementalCheckpoint(
+            mode = mode,
+            sessionId = sessionId,
+            sourceWindowStart = sourceWindowStart,
+            sourceWindowEnd = sourceWindowEnd,
+        )
 
         log.info(
             StructuredLog.event(
@@ -313,16 +349,33 @@ class MeetingEndUseCase(
                 "windowStart" to sourceWindowStart,
                 "windowEnd" to sourceWindowEnd,
                 "bufferSeconds" to SUMMARY_GRACE_SECONDS,
+                "incrementalCheckpoint" to (checkpoint != null),
+                "checkpointMessageId" to checkpoint?.afterMessageId,
+                "checkpointWindowStart" to checkpoint?.windowStart,
             ),
         )
 
-        val collected = meetingThreadGateway.collectMessagesInWindow(
-            thread = thread,
-            windowStart = sourceWindowStart,
-            windowEnd = sourceWindowEnd,
-            maxCount = MAX_SUMMARY_MESSAGES,
-        )
-        progress?.invoke(MeetingService.SummaryProgress.Collected(collected.messages.size))
+        val collected = if (checkpoint == null) {
+            meetingThreadGateway.collectMessagesInWindow(
+                thread = thread,
+                windowStart = sourceWindowStart,
+                windowEnd = sourceWindowEnd,
+                maxCount = MAX_SUMMARY_MESSAGES,
+            )
+        } else {
+            meetingThreadGateway.collectMessagesAfterCheckpoint(
+                thread = thread,
+                afterMessageIdExclusive = checkpoint.afterMessageId,
+                windowStart = checkpoint.windowStart,
+                windowEnd = sourceWindowEnd,
+                maxCount = MAX_SUMMARY_MESSAGES,
+            )
+        }
+        val sourceMessageCount = (checkpoint?.sourceMessageCount ?: 0) + collected.messages.size
+        val participantUserIds = (checkpoint?.participantUserIds ?: emptySet()) + collected.participantUserIds
+        val participantCount = participantUserIds.size
+        val sourceLastMessageId = collected.latestMessageId ?: checkpoint?.afterMessageId
+        progress?.invoke(MeetingService.SummaryProgress.Collected(sourceMessageCount))
 
         val summaryInput = collected.messages.map {
             MeetingSummaryExtractor.MeetingMessage(
@@ -331,7 +384,11 @@ class MeetingEndUseCase(
                 createdAt = it.timeCreated.toInstant(),
             )
         }
-        val extracted = meetingSummaryExtractor.extract(summaryInput)
+        val extractedDelta = meetingSummaryExtractor.extract(summaryInput)
+        val extracted = mergeExtractedSummary(
+            base = checkpoint?.baseSummary ?: emptySummary(),
+            delta = extractedDelta,
+        )
         val structuredItems = meetingStructuredItemService.listSummaryItems(sessionId)
         val decisionMerge = mergeStructuredAndExtracted(
             structured = structuredItems.decisions,
@@ -357,8 +414,8 @@ class MeetingEndUseCase(
             sessionId = sessionId,
             existingSummaryMessageId = session.summaryMessageId,
             summary = mergedSummary,
-            sourceMessageCount = collected.messages.size,
-            participantCount = collected.participantCount,
+            sourceMessageCount = sourceMessageCount,
+            participantCount = participantCount,
             sourceWindowStart = sourceWindowStart,
             sourceWindowEnd = sourceWindowEnd,
             structuredDecisions = decisionMerge.structured,
@@ -373,12 +430,14 @@ class MeetingEndUseCase(
             guildId = session.guildId,
             threadId = session.threadId,
             summaryMessageId = summaryMessage.idLong,
-            messageCount = collected.messages.size,
-            participantCount = collected.participantCount,
+            messageCount = sourceMessageCount,
+            participantCount = participantCount,
             summary = mergedSummary,
             windowStart = sourceWindowStart,
             windowEnd = sourceWindowEnd,
             sourceBufferSeconds = SUMMARY_GRACE_SECONDS,
+            sourceLastMessageId = sourceLastMessageId,
+            participantUserIds = participantUserIds,
             version = SUMMARY_VERSION,
         )
 
@@ -388,13 +447,15 @@ class MeetingEndUseCase(
                 "guildId" to session.guildId,
                 "threadId" to thread.idLong,
                 "sessionId" to sessionId,
-                "messageCount" to collected.messages.size,
-                "participantCount" to collected.participantCount,
+                "messageCount" to sourceMessageCount,
+                "participantCount" to participantCount,
                 "structuredDecisionCount" to decisionMerge.structured.size,
                 "structuredActionCount" to actionMerge.structured.size,
                 "structuredTodoCount" to todoMerge.structured.size,
                 "summaryMessageId" to summaryMessage.idLong,
                 "summaryArtifactId" to artifact.id,
+                "incrementalCheckpoint" to (checkpoint != null),
+                "deltaMessageCount" to collected.messages.size,
                 "durationMs" to (System.currentTimeMillis() - summaryStartedAtMillis),
             ),
         )
@@ -402,9 +463,60 @@ class MeetingEndUseCase(
         return GeneratedSummary(
             summary = mergedSummary,
             summaryMessageId = summaryMessage.idLong,
-            sourceMessageCount = collected.messages.size,
-            participantCount = collected.participantCount,
+            sourceMessageCount = sourceMessageCount,
+            participantCount = participantCount,
             summaryArtifactId = artifact.id,
+        )
+    }
+
+    private fun resolveIncrementalCheckpoint(
+        mode: String,
+        sessionId: Long,
+        sourceWindowStart: Instant,
+        sourceWindowEnd: Instant,
+    ): IncrementalCheckpoint? {
+        if (mode != SUMMARY_MODE_REGENERATE) {
+            return null
+        }
+        val latest = meetingSummaryArtifactService.findLatestByMeetingSessionId(sessionId) ?: return null
+        val checkpointMessageId = latest.sourceLastMessageId ?: return null
+        if (latest.sourceWindowStart != sourceWindowStart) {
+            return null
+        }
+        if (latest.sourceWindowEnd.isAfter(sourceWindowEnd)) {
+            return null
+        }
+        val participantUserIds = meetingSummaryArtifactService.parseParticipantUserIds(latest)
+        if (latest.participantCount > 0 && participantUserIds.isEmpty()) {
+            return null
+        }
+        return IncrementalCheckpoint(
+            afterMessageId = checkpointMessageId,
+            sourceMessageCount = latest.messageCount,
+            participantUserIds = participantUserIds,
+            baseSummary = meetingSummaryArtifactService.toSummary(latest),
+            windowStart = maxOf(sourceWindowStart, latest.sourceWindowEnd),
+        )
+    }
+
+    private fun mergeExtractedSummary(
+        base: MeetingSummaryExtractor.MeetingSummary,
+        delta: MeetingSummaryExtractor.MeetingSummary,
+    ): MeetingSummaryExtractor.MeetingSummary {
+        return MeetingSummaryExtractor.MeetingSummary(
+            decisions = dedupeByNormalized(base.decisions + delta.decisions),
+            actionItems = dedupeByNormalized(base.actionItems + delta.actionItems),
+            todos = dedupeByNormalized(base.todos + delta.todos),
+            highlights = dedupeByNormalized(base.highlights + delta.highlights),
+        )
+    }
+
+    private fun emptySummary(): MeetingSummaryExtractor.MeetingSummary {
+        return MeetingSummaryExtractor.MeetingSummary(
+            decisions = emptyList(),
+            actionItems = emptyList(),
+            todos = emptyList(),
+            highlights = emptyList(),
         )
     }
 
@@ -510,6 +622,7 @@ class MeetingEndUseCase(
                 thread = thread,
                 meetingEndBase = meetingEndBase,
                 progress = progress,
+                mode = mode,
             )
         }.onFailure { exception ->
             logSummaryFailure(
@@ -524,19 +637,9 @@ class MeetingEndUseCase(
 
     private fun resolveSessionForEnd(
         guildId: Long,
-        fallbackThreadId: Long?,
-        requestedThreadId: Long?,
+        meetingSessionId: Long,
     ): MeetingSessionEntity? {
-        if (requestedThreadId != null) {
-            return meetingSessionRepository.findByGuildIdAndThreadId(guildId, requestedThreadId)
-        }
-        if (fallbackThreadId != null) {
-            return meetingSessionRepository.findByGuildIdAndThreadId(guildId, fallbackThreadId)
-        }
-        return meetingSessionRepository.findFirstByGuildIdAndStatusOrderByStartedAtDesc(
-            guildId,
-            MeetingSessionStatus.ACTIVE,
-        )
+        return meetingSessionRepository.findByIdAndGuildId(meetingSessionId, guildId)
     }
 
     private fun resolveSummaryContent(message: Message): String {
@@ -568,6 +671,14 @@ class MeetingEndUseCase(
         val structured: List<String>,
         val extractedOnly: List<String>,
         val merged: List<String>,
+    )
+
+    private data class IncrementalCheckpoint(
+        val afterMessageId: Long,
+        val sourceMessageCount: Int,
+        val participantUserIds: Set<Long>,
+        val baseSummary: MeetingSummaryExtractor.MeetingSummary,
+        val windowStart: Instant,
     )
 
     companion object {

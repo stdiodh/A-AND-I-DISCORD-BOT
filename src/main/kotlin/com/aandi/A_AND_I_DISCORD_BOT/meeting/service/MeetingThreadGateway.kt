@@ -6,6 +6,7 @@ import com.aandi.A_AND_I_DISCORD_BOT.common.time.KstTime
 import com.aandi.A_AND_I_DISCORD_BOT.dashboard.ui.HomeCustomIdParser
 import com.aandi.A_AND_I_DISCORD_BOT.meeting.summary.MeetingSummaryExtractor
 import com.aandi.A_AND_I_DISCORD_BOT.meeting.ui.MeetingSummaryActionIds
+import com.aandi.A_AND_I_DISCORD_BOT.meeting.ui.MeetingThreadActionIds
 import net.dv8tion.jda.api.EmbedBuilder
 import net.dv8tion.jda.api.JDA
 import net.dv8tion.jda.api.components.actionrow.ActionRow
@@ -63,24 +64,34 @@ class MeetingThreadGateway(
         return runCatching { startMessage.createThreadChannel(threadName).complete() }.getOrNull()
     }
 
-    fun postMeetingTemplate(guildId: Long, thread: ThreadChannel) {
+    fun postMeetingTemplate(guildId: Long, thread: ThreadChannel, sessionId: Long) {
         val template = buildString {
             appendLine("## 회의 템플릿")
             appendLine("- 결정: (예) 결정: 다음 주까지 MVP 배포")
             appendLine("- 액션: (예) 액션: 홍길동이 CI 파이프라인 정리")
             appendLine("- TODO: (예) TODO: 인증 예외 케이스 테스트 추가")
         }
+        val threadActionRow = ActionRow.of(
+            Button.success(MeetingThreadActionIds.addDecision(sessionId), "결정 추가"),
+            Button.success(MeetingThreadActionIds.addAction(sessionId), "액션 추가"),
+            Button.success(MeetingThreadActionIds.addTodo(sessionId), "할 일 추가"),
+            Button.danger(MeetingThreadActionIds.endMeeting(sessionId), "회의 종료"),
+        )
 
         val agenda = agendaService.getTodayAgenda(guildId)
         if (agenda == null) {
             thread.sendMessage("$template\n\n오늘 안건 링크가 아직 등록되지 않았습니다.\n`/회의 안건등록 링크:<URL>` 또는 아래 버튼으로 먼저 설정해 주세요.")
-                .setComponents(ActionRow.of(Button.secondary("dash:agenda_set", "안건 설정")))
+                .setComponents(
+                    threadActionRow,
+                    ActionRow.of(Button.secondary("dash:agenda_set", "안건 설정")),
+                )
                 .queue()
             return
         }
 
         thread.sendMessage("$template\n\n오늘 안건 링크를 확인하세요.")
             .setComponents(
+                threadActionRow,
                 ActionRow.of(
                     Button.link(agenda.url, "오늘 안건 링크"),
                     Button.success(HomeCustomIdParser.of("task", "create"), "과제 등록"),
@@ -155,6 +166,59 @@ class MeetingThreadGateway(
         return MessageCollectionResult(
             messages = deduped,
             participantCount = participantCount,
+            participantUserIds = deduped.map { it.author.idLong }.toSet(),
+            latestMessageId = deduped.maxOfOrNull { it.idLong },
+            windowStart = windowStart,
+            windowEnd = windowEnd,
+        )
+    }
+
+    fun collectMessagesAfterCheckpoint(
+        thread: ThreadChannel,
+        afterMessageIdExclusive: Long,
+        windowStart: Instant,
+        windowEnd: Instant,
+        maxCount: Int,
+    ): MessageCollectionResult {
+        val accepted = mutableListOf<Message>()
+        val history = thread.history
+        while (accepted.size < maxCount) {
+            val remaining = maxCount - accepted.size
+            val batchSize = remaining.coerceAtMost(100)
+            val batch = runCatching { history.retrievePast(batchSize).complete() }.getOrElse { emptyList() }
+            if (batch.isEmpty()) {
+                break
+            }
+
+            batch.forEach { message ->
+                if (message.idLong <= afterMessageIdExclusive) {
+                    return@forEach
+                }
+                val createdAt = message.timeCreated.toInstant()
+                if (createdAt.isBefore(windowStart) || createdAt.isAfter(windowEnd)) {
+                    return@forEach
+                }
+                if (message.author.isBot) {
+                    return@forEach
+                }
+                accepted.add(message)
+            }
+
+            val oldest = batch.last()
+            val oldestCreatedAt = oldest.timeCreated.toInstant()
+            if (oldest.idLong <= afterMessageIdExclusive || oldestCreatedAt.isBefore(windowStart) || batch.size < batchSize) {
+                break
+            }
+        }
+
+        val deduped = accepted
+            .distinctBy { it.idLong }
+            .sortedBy { it.timeCreated.toInstant() }
+        return MessageCollectionResult(
+            messages = deduped,
+            participantCount = deduped.map { it.author.idLong }.toSet().size,
+            participantUserIds = deduped.map { it.author.idLong }.toSet(),
+            latestMessageId = deduped.maxOfOrNull { it.idLong },
             windowStart = windowStart,
             windowEnd = windowEnd,
         )
@@ -216,12 +280,11 @@ class MeetingThreadGateway(
                 Button.primary(MeetingSummaryActionIds.regenerate(sessionId), "요약 재생성"),
                 Button.success(MeetingSummaryActionIds.addDecision(sessionId), "결정 추가"),
                 Button.success(MeetingSummaryActionIds.addAction(sessionId), "액션 추가"),
+                Button.success(MeetingSummaryActionIds.addTodo(sessionId), "할 일 추가"),
             ),
             ActionRow.of(
-                Button.secondary(
-                    MeetingSummaryActionIds.source(sessionId),
-                    "원문 보기/메시지 수 ${sourceMessageCount}개",
-                ),
+                Button.success(HomeCustomIdParser.of("task", "create"), "과제로 전환"),
+                Button.secondary(MeetingSummaryActionIds.source(sessionId), "원문 보기/메시지 수 ${sourceMessageCount}개"),
             ),
         )
 
@@ -369,6 +432,8 @@ class MeetingThreadGateway(
     data class MessageCollectionResult(
         val messages: List<Message>,
         val participantCount: Int,
+        val participantUserIds: Set<Long>,
+        val latestMessageId: Long?,
         val windowStart: Instant,
         val windowEnd: Instant,
     )

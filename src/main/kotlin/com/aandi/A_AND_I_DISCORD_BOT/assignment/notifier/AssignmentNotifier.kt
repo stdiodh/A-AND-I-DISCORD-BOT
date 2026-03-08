@@ -38,10 +38,13 @@ class AssignmentNotifier(
         val embed = buildEmbed(task, notificationType)
         val content = buildContent(task, notificationType)
         return runCatching {
-            channel.sendMessage(content)
+            val request = channel.sendMessage(content)
                 .setEmbeds(embed)
-                .setComponents(ActionRow.of(Button.link(task.verifyUrl, "과제 확인하기")))
-                .submit()
+            val verifyUrl = task.verifyUrl?.trim()
+            if (!verifyUrl.isNullOrBlank()) {
+                request.setComponents(ActionRow.of(Button.link(verifyUrl, "과제 확인하기")))
+            }
+            request.submit()
                 .get(SEND_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         }.fold(
             onSuccess = {
@@ -105,7 +108,7 @@ class AssignmentNotifier(
         .setTitle(resolveTitle(notificationType))
         .setColor(resolveColor(notificationType))
         .addField("제목", task.title, false)
-        .addField("과제 링크", task.verifyUrl, false)
+        .addField("과제 링크", task.verifyUrl?.ifBlank { "(미입력)" } ?: "(미입력)", false)
         .addField("알림시각(KST)", KstTime.formatInstantToKst(task.remindAt), true)
         .addField("마감시각(KST)", KstTime.formatInstantToKst(task.dueAt), true)
         .addField("등록자", "<@${task.createdBy}>", true)

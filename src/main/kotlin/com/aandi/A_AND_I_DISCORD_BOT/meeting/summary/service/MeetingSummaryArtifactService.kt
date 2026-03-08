@@ -24,6 +24,8 @@ class MeetingSummaryArtifactService(
         windowStart: Instant,
         windowEnd: Instant,
         sourceBufferSeconds: Int,
+        sourceLastMessageId: Long?,
+        participantUserIds: Set<Long>,
         version: String,
     ): MeetingSummaryArtifactEntity {
         val nowUtc = Instant.now()
@@ -42,6 +44,8 @@ class MeetingSummaryArtifactService(
             sourceWindowStart = windowStart,
             sourceWindowEnd = windowEnd,
             sourceBufferSeconds = sourceBufferSeconds,
+            sourceLastMessageId = sourceLastMessageId,
+            participantUserIdsText = serializeParticipantUserIds(participantUserIds),
             decisionsText = serializeLines(summary.decisions),
             actionsText = serializeLines(summary.actionItems),
             todosText = serializeLines(summary.todos),
@@ -77,6 +81,15 @@ class MeetingSummaryArtifactService(
         return meetingSummaryArtifactRepository.save(artifact)
     }
 
+    fun appendTodo(meetingSessionId: Long, todo: String): MeetingSummaryArtifactEntity? {
+        val artifact = findLatestByMeetingSessionId(meetingSessionId) ?: return null
+        val updatedTodos = parseLines(artifact.todosText) + todo.trim()
+        artifact.todosText = serializeLines(updatedTodos)
+        artifact.todoCount = updatedTodos.size
+        artifact.updatedAt = Instant.now()
+        return meetingSummaryArtifactRepository.save(artifact)
+    }
+
     fun toSummary(artifact: MeetingSummaryArtifactEntity): MeetingSummaryExtractor.MeetingSummary {
         return MeetingSummaryExtractor.MeetingSummary(
             decisions = parseLines(artifact.decisionsText),
@@ -84,6 +97,10 @@ class MeetingSummaryArtifactService(
             todos = parseLines(artifact.todosText),
             highlights = emptyList(),
         )
+    }
+
+    fun parseParticipantUserIds(artifact: MeetingSummaryArtifactEntity): Set<Long> {
+        return parseParticipantUserIds(artifact.participantUserIdsText)
     }
 
     fun save(artifact: MeetingSummaryArtifactEntity): MeetingSummaryArtifactEntity {
@@ -108,5 +125,25 @@ class MeetingSummaryArtifactService(
             return null
         }
         return normalized.joinToString("\n")
+    }
+
+    private fun parseParticipantUserIds(raw: String?): Set<Long> {
+        if (raw.isNullOrBlank()) {
+            return emptySet()
+        }
+        return raw.split(",")
+            .map { it.trim() }
+            .mapNotNull { it.toLongOrNull() }
+            .toSet()
+    }
+
+    private fun serializeParticipantUserIds(userIds: Set<Long>): String? {
+        val normalized = userIds
+            .filter { it > 0L }
+            .toSortedSet()
+        if (normalized.isEmpty()) {
+            return null
+        }
+        return normalized.joinToString(",")
     }
 }

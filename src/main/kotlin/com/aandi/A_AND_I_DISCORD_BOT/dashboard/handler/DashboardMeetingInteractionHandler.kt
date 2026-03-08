@@ -1,13 +1,10 @@
 package com.aandi.A_AND_I_DISCORD_BOT.dashboard.handler
 
 import com.aandi.A_AND_I_DISCORD_BOT.common.auth.PermissionGate
-import com.aandi.A_AND_I_DISCORD_BOT.common.config.FeatureFlagsProperties
 import com.aandi.A_AND_I_DISCORD_BOT.common.discord.InteractionReliabilityGuard
 import com.aandi.A_AND_I_DISCORD_BOT.dashboard.ui.DashboardActionIds
 import com.aandi.A_AND_I_DISCORD_BOT.dashboard.ui.HomeCustomIdParser
 import com.aandi.A_AND_I_DISCORD_BOT.discord.interaction.InteractionPrefixHandler
-import com.aandi.A_AND_I_DISCORD_BOT.meeting.entity.MeetingSessionStatus
-import com.aandi.A_AND_I_DISCORD_BOT.meeting.repository.MeetingSessionRepository
 import com.aandi.A_AND_I_DISCORD_BOT.meeting.service.MeetingService
 import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent
 import org.slf4j.LoggerFactory
@@ -20,8 +17,6 @@ import java.util.concurrent.CompletableFuture
 class DashboardMeetingInteractionHandler(
     private val permissionGate: PermissionGate,
     private val meetingService: MeetingService,
-    private val meetingSessionRepository: MeetingSessionRepository,
-    private val featureFlags: FeatureFlagsProperties,
     private val interactionReliabilityGuard: InteractionReliabilityGuard,
 ) : InteractionPrefixHandler {
 
@@ -61,50 +56,26 @@ class DashboardMeetingInteractionHandler(
         val guildId = guild.idLong
         val requestedBy = member.idLong
         val fallbackChannelId = event.channel.idLong
-        val activeSession = if (featureFlags.homeV2) {
-            meetingSessionRepository.findFirstByGuildIdAndStatusOrderByStartedAtDesc(
-                guildId,
-                MeetingSessionStatus.ACTIVE,
-            )
-        } else {
-            null
-        }
         interactionReliabilityGuard.safeDefer(
             interaction = event,
             preferUpdate = false,
             onDeferred = { ctx ->
                 CompletableFuture.runAsync {
                     runCatching {
-                        if (activeSession == null) {
-                            meetingService.startMeeting(
-                                guildId = guildId,
-                                requestedBy = requestedBy,
-                                targetChannelId = null,
-                                fallbackChannelId = fallbackChannelId,
-                                rawTitle = null,
-                            )
-                        } else {
-                            meetingService.endMeeting(
-                                guildId = guildId,
-                                requestedBy = requestedBy,
-                                fallbackThreadId = event.channel.takeIf { event.channelType.isThread }?.idLong,
-                                requestedThreadId = activeSession.threadId,
-                            )
-                        }
+                        meetingService.startMeeting(
+                            guildId = guildId,
+                            requestedBy = requestedBy,
+                            targetChannelId = null,
+                            fallbackChannelId = fallbackChannelId,
+                            rawTitle = null,
+                        )
                     }.fold(
                         onSuccess = { result ->
-                            val message = when (result) {
-                                is MeetingService.StartResult -> startResultMessage(result)
-                                is MeetingService.EndResult -> endResultMessage(result)
-                                else -> "회의 처리 결과를 확인하지 못했습니다."
-                            }
-                            interactionReliabilityGuard.safeEditReply(ctx, message)
+                            interactionReliabilityGuard.safeEditReply(ctx, startResultMessage(result))
                         },
                         onFailure = { exception ->
-                            val action = if (activeSession == null) "start" else "end"
                             log.error(
-                                "Dashboard meeting {} failed: guildId={}, requestedBy={}, channelId={}",
-                                action,
+                                "Dashboard meeting start failed: guildId={}, requestedBy={}, channelId={}",
                                 guildId,
                                 requestedBy,
                                 fallbackChannelId,
@@ -112,7 +83,7 @@ class DashboardMeetingInteractionHandler(
                             )
                             interactionReliabilityGuard.safeFailureReply(
                                 ctx = ctx,
-                                alternativeCommandGuide = "`/회의 종료` 또는 `/홈 설치`를 사용해 다시 시도해 주세요.",
+                                alternativeCommandGuide = "`/회의 시작` 또는 `/홈 설치`를 사용해 다시 시도해 주세요.",
                             )
                         },
                     )
@@ -138,7 +109,7 @@ class DashboardMeetingInteractionHandler(
             }
 
             MeetingService.StartResult.ChannelNotConfigured -> {
-                "회의 채널이 설정되지 않았습니다. `/홈 생성` 후 다시 시도해 주세요."
+                "회의 채널이 설정되지 않았습니다. `/설정 마법사 회의채널:#회의`로 먼저 설정해 주세요."
             }
 
             MeetingService.StartResult.ChannelNotFound -> {
@@ -147,30 +118,6 @@ class DashboardMeetingInteractionHandler(
 
             MeetingService.StartResult.ThreadCreateFailed -> {
                 "회의 스레드 생성에 실패했습니다."
-            }
-        }
-    }
-
-    private fun endResultMessage(result: MeetingService.EndResult): String {
-        return when (result) {
-            is MeetingService.EndResult.Success -> {
-                "회의를 종료했습니다. 요약 메시지: `${result.summaryMessageId}`"
-            }
-
-            is MeetingService.EndResult.ClosedMissingThread -> {
-                "회의 스레드를 찾지 못해 세션만 종료했습니다. threadId=${result.threadId}"
-            }
-
-            MeetingService.EndResult.SessionNotFound -> {
-                "종료할 진행 중 회의를 찾지 못했습니다."
-            }
-
-            MeetingService.EndResult.AlreadyEnded -> {
-                "이미 종료된 회의입니다."
-            }
-
-            is MeetingService.EndResult.ThreadNotFound -> {
-                "회의 스레드를 찾지 못했습니다: <#${result.threadId}>"
             }
         }
     }

@@ -208,6 +208,19 @@ class GuildConfigServiceTest : FunSpec({
         result.dashboardMessageId shouldBe 777L
     }
 
+    test("setDashboardChannel-홈 채널 변경 시 메시지 ID를 초기화한다") {
+        val guildId = 1234L
+        val config = GuildConfig(guildId = guildId, dashboardChannelId = 111L, dashboardMessageId = 222L)
+        every { guildConfigRepository.createDefaultIfAbsent(guildId) } returns 0
+        every { guildConfigRepository.findById(guildId) } returns Optional.of(config)
+        every { guildConfigRepository.save(config) } returns config
+
+        val result = service.setDashboardChannel(guildId, 333L)
+
+        result.dashboardChannelId shouldBe 333L
+        result.dashboardMessageId shouldBe null
+    }
+
     test("getDashboard-getOrCreate를 통해 nullable 대시보드 설정을 반환한다") {
         val guildId = 1234L
         val config = GuildConfig(guildId = guildId, dashboardChannelId = 101L, dashboardMessageId = 202L)
@@ -219,5 +232,48 @@ class GuildConfigServiceTest : FunSpec({
         result.channelId shouldBe 101L
         result.messageId shouldBe 202L
         verify(exactly = 1) { guildConfigRepository.createDefaultIfAbsent(guildId) }
+    }
+
+    test("setDefaultNotifyRole-과제 기본 알림 역할 ID를 저장한다") {
+        val guildId = 1234L
+        val roleId = 4567L
+        val config = GuildConfig(guildId = guildId, defaultNotifyRoleId = null)
+        every { guildConfigRepository.createDefaultIfAbsent(guildId) } returns 0
+        every { guildConfigRepository.findById(guildId) } returns Optional.of(config)
+        every { guildConfigRepository.save(config) } returns config
+
+        val result = service.setDefaultNotifyRole(guildId, roleId)
+
+        result.defaultNotifyRoleId shouldBe roleId
+        verify(exactly = 1) { guildConfigRepository.save(config) }
+    }
+
+    test("clearDefaultNotifyRole-과제 기본 알림 역할 ID를 null로 저장한다") {
+        val guildId = 1234L
+        val config = GuildConfig(guildId = guildId, defaultNotifyRoleId = 4567L)
+        every { guildConfigRepository.createDefaultIfAbsent(guildId) } returns 0
+        every { guildConfigRepository.findById(guildId) } returns Optional.of(config)
+        every { guildConfigRepository.save(config) } returns config
+
+        val result = service.clearDefaultNotifyRole(guildId)
+
+        result.defaultNotifyRoleId shouldBe null
+        verify(exactly = 1) { guildConfigRepository.save(config) }
+    }
+
+    test("getTaskDefaults-과제 기본 채널과 알림 역할 설정을 반환한다") {
+        val guildId = 1234L
+        val config = GuildConfig(
+            guildId = guildId,
+            defaultTaskChannelId = 2222L,
+            defaultNotifyRoleId = 3333L,
+        )
+        every { guildConfigRepository.createDefaultIfAbsent(guildId) } returns 0
+        every { guildConfigRepository.findById(guildId) } returns Optional.of(config)
+
+        val result = service.getTaskDefaults(guildId)
+
+        result.defaultTaskChannelId shouldBe 2222L
+        result.defaultNotifyRoleId shouldBe 3333L
     }
 })

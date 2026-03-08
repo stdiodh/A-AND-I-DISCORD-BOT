@@ -14,6 +14,7 @@ import java.time.Instant
 class VoiceSessionService(
     private val mogakcoChannelRepository: MogakcoChannelRepository,
     private val voiceSessionRepository: VoiceSessionRepository,
+    private val voiceSessionDailyRollupService: VoiceSessionDailyRollupService,
     private val clock: Clock,
 ) {
 
@@ -115,9 +116,21 @@ class VoiceSessionService(
     }
 
     private fun closeSession(session: VoiceSession, closedAt: Instant) {
+        if (session.leftAt != null) {
+            return
+        }
         val leftAt = resolveClosedAt(session.joinedAt, closedAt)
         session.leftAt = leftAt
-        session.durationSec = Duration.between(session.joinedAt, leftAt).seconds.coerceAtLeast(0).toInt()
+        val durationSeconds = Duration.between(session.joinedAt, leftAt).seconds.coerceAtLeast(0)
+        session.durationSec = durationSeconds.toInt()
+        if (durationSeconds > 0) {
+            voiceSessionDailyRollupService.accumulate(
+                guildId = session.guildId,
+                userId = session.userId,
+                startInclusive = session.joinedAt,
+                endExclusive = leftAt,
+            )
+        }
     }
 
     private fun resolveClosedAt(joinedAt: Instant, closedAt: Instant): Instant {

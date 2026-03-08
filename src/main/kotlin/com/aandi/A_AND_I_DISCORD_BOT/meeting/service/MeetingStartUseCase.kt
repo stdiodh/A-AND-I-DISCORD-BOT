@@ -23,6 +23,23 @@ class MeetingStartUseCase(
     private val clock: Clock,
 ) {
 
+    fun listActiveMeetings(guildId: Long): MeetingService.ActiveMeetingsResult {
+        val meetings = meetingSessionRepository.findAllByGuildIdAndStatusOrderByStartedAtDesc(
+            guildId = guildId,
+            status = MeetingSessionStatus.ACTIVE,
+        ).mapNotNull { session ->
+            val sessionId = session.id ?: return@mapNotNull null
+            MeetingService.ActiveMeetingView(
+                sessionId = sessionId,
+                boardChannelId = session.boardChannelId,
+                threadId = session.threadId,
+                startedBy = session.startedBy,
+                startedAt = session.startedAt,
+            )
+        }
+        return MeetingService.ActiveMeetingsResult.Success(meetings)
+    }
+
     fun startMeeting(
         guildId: Long,
         requestedBy: Long,
@@ -30,11 +47,6 @@ class MeetingStartUseCase(
         fallbackChannelId: Long?,
         rawTitle: String?,
     ): MeetingService.StartResult {
-        val activeSession = resolveActiveSessionOrCleanup(guildId, requestedBy)
-        if (activeSession != null) {
-            return MeetingService.StartResult.AlreadyActive(activeSession.threadId)
-        }
-
         val boards = guildConfigService.getBoardChannels(guildId)
         val dashboard = guildConfigService.getDashboard(guildId)
         val channelId = targetChannelId
@@ -42,6 +54,14 @@ class MeetingStartUseCase(
             ?: dashboard.channelId
             ?: fallbackChannelId
             ?: return MeetingService.StartResult.ChannelNotConfigured
+        val activeSession = resolveActiveSessionOrCleanup(
+            guildId = guildId,
+            boardChannelId = channelId,
+            requestedBy = requestedBy,
+        )
+        if (activeSession != null) {
+            return MeetingService.StartResult.AlreadyActive(activeSession.threadId)
+        }
         val channel = meetingThreadGateway.findTextChannel(channelId) ?: return MeetingService.StartResult.ChannelNotFound
         val nowUtc = Instant.now(clock)
         val todayAgenda = agendaLinkRepository.findByGuildIdAndDateLocal(guildId, periodCalculator.today(nowUtc))
@@ -53,6 +73,7 @@ class MeetingStartUseCase(
             MeetingSessionEntity(
                 guildId = guildId,
                 threadId = thread.idLong,
+                boardChannelId = channelId,
                 agendaLinkId = todayAgenda?.id,
                 status = MeetingSessionStatus.ACTIVE,
                 startedBy = requestedBy,
@@ -63,7 +84,7 @@ class MeetingStartUseCase(
         )
         val sessionId = savedSession.id ?: return MeetingService.StartResult.ThreadCreateFailed
 
-        meetingThreadGateway.postMeetingTemplate(guildId, thread)
+        meetingThreadGateway.postMeetingTemplate(guildId, thread, sessionId)
         return MeetingService.StartResult.Success(
             sessionId = sessionId,
             threadId = thread.idLong,
@@ -71,10 +92,15 @@ class MeetingStartUseCase(
         )
     }
 
-    private fun resolveActiveSessionOrCleanup(guildId: Long, requestedBy: Long): MeetingSessionEntity? {
+    private fun resolveActiveSessionOrCleanup(
+        guildId: Long,
+        boardChannelId: Long,
+        requestedBy: Long,
+    ): MeetingSessionEntity? {
         while (true) {
-            val activeSession = meetingSessionRepository.findFirstByGuildIdAndStatusOrderByStartedAtDesc(
+            val activeSession = meetingSessionRepository.findFirstByGuildIdAndBoardChannelIdAndStatusOrderByStartedAtDesc(
                 guildId,
+                boardChannelId,
                 MeetingSessionStatus.ACTIVE,
             ) ?: return null
             if (meetingThreadGateway.findThreadChannel(activeSession.threadId) != null) {

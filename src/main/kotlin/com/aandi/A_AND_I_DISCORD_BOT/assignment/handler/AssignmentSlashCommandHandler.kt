@@ -5,12 +5,20 @@ import com.aandi.A_AND_I_DISCORD_BOT.admin.service.GuildConfigService
 import com.aandi.A_AND_I_DISCORD_BOT.assignment.entity.AssignmentStatus
 import com.aandi.A_AND_I_DISCORD_BOT.assignment.service.AssignmentTaskService
 import com.aandi.A_AND_I_DISCORD_BOT.common.auth.HomeChannelGuard
+import com.aandi.A_AND_I_DISCORD_BOT.common.config.FeatureFlagsProperties
 import com.aandi.A_AND_I_DISCORD_BOT.common.error.DiscordErrorCode
 import com.aandi.A_AND_I_DISCORD_BOT.common.error.DiscordErrorFormatter
 import com.aandi.A_AND_I_DISCORD_BOT.common.error.DiscordErrorResponse
 import com.aandi.A_AND_I_DISCORD_BOT.common.time.KstTime
+import com.aandi.A_AND_I_DISCORD_BOT.dashboard.ui.DashboardActionIds
+import com.aandi.A_AND_I_DISCORD_BOT.dashboard.ui.HomeCustomIdParser
+import net.dv8tion.jda.api.components.buttons.Button
+import net.dv8tion.jda.api.components.label.Label
+import net.dv8tion.jda.api.components.textinput.TextInput
+import net.dv8tion.jda.api.components.textinput.TextInputStyle
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent
 import net.dv8tion.jda.api.hooks.ListenerAdapter
+import net.dv8tion.jda.api.modals.Modal
 import org.springframework.stereotype.Component
 import java.time.Clock
 import java.time.Instant
@@ -21,6 +29,7 @@ class AssignmentSlashCommandHandler(
     private val adminPermissionChecker: AdminPermissionChecker,
     private val guildConfigService: GuildConfigService,
     private val homeChannelGuard: HomeChannelGuard,
+    private val featureFlags: FeatureFlagsProperties,
     private val clock: Clock,
 ) : ListenerAdapter() {
 
@@ -67,12 +76,17 @@ class AssignmentSlashCommandHandler(
             return
         }
 
-        val title = event.getOption(OPTION_TITLE_KO)?.asString
-        val link = event.getOption(OPTION_LINK_KO)?.asString
+        if (shouldOpenQuickRegisterModal(event)) {
+            openQuickRegisterModal(event)
+            return
+        }
+
+        val title = event.getOption(OPTION_TITLE_KO)?.asString?.trim()
+        val link = event.getOption(OPTION_LINK_KO)?.asString?.trim()?.takeIf { it.isNotBlank() }
         val remindAtRaw = resolveRemindAtOption(event)
         val dueAtRaw = resolveDueAtOption(event)
-        if (title.isNullOrBlank() || link.isNullOrBlank() || remindAtRaw.isNullOrBlank() || dueAtRaw.isNullOrBlank()) {
-            replyInvalidInputError(event, "제목/링크/알림/마감은 필수입니다.", true)
+        if (title.isNullOrBlank() || remindAtRaw.isNullOrBlank() || dueAtRaw.isNullOrBlank()) {
+            replyInvalidInputError(event, "레거시 등록은 `제목/알림/마감`이 필수입니다. 옵션 없이 `/과제 등록`을 실행하면 V2 모달이 열립니다.", true)
             return
         }
 
@@ -115,6 +129,13 @@ class AssignmentSlashCommandHandler(
                 event.reply(
                     "과제를 등록했습니다.\nID: `${task.id}`\n알림(KST): `${KstTime.formatInstantToKst(task.remindAt)}`\n마감(KST): `${KstTime.formatInstantToKst(task.dueAt)}`\n역할: $roleDisplay\n임박알림(시간): `$preHours`",
                 )
+                    .addComponents(
+                        net.dv8tion.jda.api.components.actionrow.ActionRow.of(
+                            Button.secondary(DashboardActionIds.ASSIGNMENT_LIST, "목록 보기"),
+                            Button.secondary(HomeCustomIdParser.of("task", "detail", task.id.toString()), "상세 보기"),
+                            Button.secondary(HomeCustomIdParser.of("task", "edit", task.id.toString()), "수정"),
+                        ),
+                    )
                     .setEphemeral(true)
                     .queue()
             }
@@ -227,7 +248,7 @@ class AssignmentSlashCommandHandler(
             appendLine("- 임박알림(시간): $preHours")
             appendLine("- 마감메시지: $closingMessage")
             appendLine("- 등록자: <@${task.createdBy}>")
-            append("- 링크: ${task.verifyUrl}")
+            append("- 링크: ${task.verifyUrl ?: "(미입력)"}")
         }
         event.reply(payload)
             .setEphemeral(true)
@@ -296,16 +317,76 @@ class AssignmentSlashCommandHandler(
             .queue()
     }
 
+    private fun shouldOpenQuickRegisterModal(event: SlashCommandInteractionEvent): Boolean {
+        if (!featureFlags.taskQuickregisterV2) {
+            return false
+        }
+        return !hasLegacyCreateInputs(event)
+    }
+
+    private fun hasLegacyCreateInputs(event: SlashCommandInteractionEvent): Boolean {
+        return listOf(
+            OPTION_TITLE_KO,
+            OPTION_LINK_KO,
+            OPTION_REMIND_AT_KO,
+            OPTION_REMIND_AT_LEGACY_KO,
+            OPTION_REMIND_AT_EN,
+            OPTION_DUE_AT_KO,
+            OPTION_DUE_AT_LEGACY_KO,
+            OPTION_DUE_AT_EN,
+            OPTION_CHANNEL_KO,
+            OPTION_NOTIFY_ROLE_KO,
+            OPTION_NOTIFY_ROLE_LEGACY_KO,
+            OPTION_NOTIFY_ROLE_EN,
+            OPTION_PRE_REMIND_PRESET_KO,
+            OPTION_PRE_REMIND_CUSTOM_KO,
+            OPTION_PRE_REMIND_EN,
+            OPTION_CLOSING_MESSAGE_KO,
+            OPTION_CLOSING_MESSAGE_LEGACY_KO,
+            OPTION_CLOSING_MESSAGE_EN,
+        ).any { option -> event.getOption(option) != null }
+    }
+
+    private fun openQuickRegisterModal(event: SlashCommandInteractionEvent) {
+        val titleInput = TextInput.create(V2_TITLE_KEY, TextInputStyle.SHORT)
+            .setRequired(true)
+            .setPlaceholder("예) 3주차 API 과제 제출")
+            .setMaxLength(200)
+            .build()
+        val linkInput = TextInput.create(V2_LINK_KEY, TextInputStyle.SHORT)
+            .setRequired(false)
+            .setPlaceholder("예) https://lms.example.com/tasks/123")
+            .setMaxLength(500)
+            .build()
+        val dueDateInput = TextInput.create(V2_DUE_DATE_KEY, TextInputStyle.SHORT)
+            .setRequired(false)
+            .setPlaceholder("예) 2026-03-05 (미입력 시 내일 23:59)")
+            .setMaxLength(10)
+            .build()
+
+        val modal = Modal.create(DashboardActionIds.ASSIGNMENT_MODAL_V2, "빠른 과제 생성")
+            .addComponents(
+                Label.of("제목", titleInput),
+                Label.of("링크 (선택)", linkInput),
+                Label.of("마감일 (선택)", dueDateInput),
+            )
+            .build()
+        event.replyModal(modal).queue()
+    }
+
     private fun ensureAdmin(event: SlashCommandInteractionEvent, guildId: Long, member: net.dv8tion.jda.api.entities.Member): Boolean {
         if (adminPermissionChecker.isAdmin(guildId, member)) {
             return true
         }
+        if (adminPermissionChecker.canSetAdminRole(guildId, member)) {
+            return true
+        }
         val configuredRole = guildConfigService.getAdminRole(guildId)
         if (configuredRole == null) {
-            replyAccessDeniedError(event, "운영진 역할이 아직 설정되지 않았습니다. `/설정 운영진역할`에서 `역할`을 선택해 먼저 설정해 주세요.")
+            replyAccessDeniedError(event, "운영 권한이 필요합니다. 서버 관리자 권한(Manage Server/Administrator)으로 실행해 주세요.")
             return false
         }
-        replyAccessDeniedError(event, "이 명령은 운영진만 사용할 수 있습니다.")
+        replyAccessDeniedError(event, "이 명령은 운영진 역할 또는 서버 관리자 권한 사용자만 사용할 수 있습니다.")
         return false
     }
 
@@ -336,7 +417,7 @@ class AssignmentSlashCommandHandler(
             currentChannelId = event.channel.idLong,
             featureChannelId = assignmentChannelId,
             featureName = "과제",
-            setupCommand = "/설정 과제공지채널 채널:#과제",
+            setupCommand = "/설정 마법사 과제공지채널:#과제",
             usageCommand = "/과제 목록",
         )
         if (guardResult is HomeChannelGuard.GuardResult.Allowed) {
@@ -465,5 +546,9 @@ class AssignmentSlashCommandHandler(
         private const val OPTION_ID_KO = "아이디"
         private const val OPTION_TASK_ID_KO_LEGACY = "과제아이디"
         private const val OPTION_TASK_ID_EN = "taskId"
+
+        private const val V2_TITLE_KEY = "제목"
+        private const val V2_LINK_KEY = "링크"
+        private const val V2_DUE_DATE_KEY = "마감일"
     }
 }

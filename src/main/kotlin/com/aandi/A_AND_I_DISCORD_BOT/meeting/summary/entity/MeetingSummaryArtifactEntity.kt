@@ -58,6 +58,12 @@ class MeetingSummaryArtifactEntity(
     @Column(name = "source_buffer_seconds", nullable = false)
     var sourceBufferSeconds: Int = 0,
 
+    @Column(name = "source_last_message_id")
+    var sourceLastMessageId: Long? = null,
+
+    @Column(name = "participant_user_ids_text")
+    var participantUserIdsText: String? = null,
+
     @Column(name = "decisions_text")
     var decisionsText: String? = null,
 

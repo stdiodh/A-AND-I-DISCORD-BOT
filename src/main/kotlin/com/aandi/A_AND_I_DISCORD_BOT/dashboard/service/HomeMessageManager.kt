@@ -8,6 +8,7 @@ import net.dv8tion.jda.api.components.actionrow.ActionRow
 import net.dv8tion.jda.api.entities.Message
 import net.dv8tion.jda.api.entities.MessageEmbed
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel
+import net.dv8tion.jda.api.utils.data.SerializableData
 import org.slf4j.LoggerFactory
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.context.annotation.Lazy
@@ -126,11 +127,24 @@ class HomeMessageManager(
         val channel = jda.getTextChannelById(channelId) ?: return UpdateResult.ChannelNotFound
         val message = fetchMessage(channel, messageId) ?: return UpdateResult.MessageNotFound
         val marker = markerForGuild(guildId)
+        val markedEmbed = withMarker(payload.embed, marker)
 
-        message.editMessageEmbeds(withMarker(payload.embed, marker))
+        if (isSameHomePayload(message, markedEmbed, payload.components)) {
+            return UpdateResult.Success(
+                channelId = channelId,
+                messageId = messageId,
+                updated = false,
+            )
+        }
+
+        message.editMessageEmbeds(markedEmbed)
             .setComponents(payload.components)
             .complete()
-        return UpdateResult.Success(channelId = channelId, messageId = messageId)
+        return UpdateResult.Success(
+            channelId = channelId,
+            messageId = messageId,
+            updated = true,
+        )
     }
 
     internal fun markerForGuild(guildId: Long): String = "$HOME_MARKER_PREFIX$guildId"
@@ -153,6 +167,44 @@ class HomeMessageManager(
         return EmbedBuilder(embed)
             .setFooter(marker)
             .build()
+    }
+
+    private fun isSameHomePayload(
+        message: Message,
+        desiredEmbed: MessageEmbed,
+        desiredComponents: List<ActionRow>,
+    ): Boolean {
+        val currentEmbed = message.embeds.firstOrNull()
+        if (embedSignature(currentEmbed) != embedSignature(desiredEmbed)) {
+            return false
+        }
+        return componentSignature(message.components) == componentSignature(desiredComponents)
+    }
+
+    private fun embedSignature(embed: MessageEmbed?): String {
+        if (embed == null) {
+            return "null"
+        }
+        val fields = embed.fields.joinToString("|") { field ->
+            "${field.name}:${field.value}:${field.isInline}"
+        }
+        val footer = embed.footer?.text.orEmpty()
+        return listOf(
+            embed.title.orEmpty(),
+            embed.description.orEmpty(),
+            embed.colorRaw?.toString().orEmpty(),
+            footer,
+            fields,
+        ).joinToString("::")
+    }
+
+    private fun componentSignature(components: List<*>): String {
+        return components.joinToString("|") { component ->
+            when (component) {
+                is SerializableData -> component.toData().toString()
+                else -> component.toString()
+            }
+        }
     }
 
     data class HomePayload(
@@ -182,6 +234,7 @@ class HomeMessageManager(
         data class Success(
             val channelId: Long,
             val messageId: Long,
+            val updated: Boolean,
         ) : UpdateResult
 
         data object NotConfigured : UpdateResult

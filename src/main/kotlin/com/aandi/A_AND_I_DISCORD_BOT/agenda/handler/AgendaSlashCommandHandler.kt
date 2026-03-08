@@ -27,7 +27,10 @@ class AgendaSlashCommandHandler(
             return
         }
 
-        if (isSubcommand(event, SUBCOMMAND_SET_KO, SUBCOMMAND_SET_EN)) {
+        if (
+            isSubcommand(event, SUBCOMMAND_SET_KO, SUBCOMMAND_SET_EN) ||
+            isSubcommand(event, SUBCOMMAND_SET_LEGACY_KO, SUBCOMMAND_SET_EN)
+        ) {
             handleSet(event)
             return
         }
@@ -187,7 +190,7 @@ class AgendaSlashCommandHandler(
             currentChannelId = event.channel.idLong,
             featureChannelId = meetingChannelId,
             featureName = "회의",
-            setupCommand = "/설정 회의채널 채널:#회의",
+            setupCommand = "/설정 마법사 회의채널:#회의",
             usageCommand = "/안건 오늘",
         )
         if (guardResult is HomeChannelGuard.GuardResult.Allowed) {
@@ -254,7 +257,8 @@ class AgendaSlashCommandHandler(
     companion object {
         private const val COMMAND_NAME_KO = "안건"
         private const val COMMAND_NAME_EN = "agenda"
-        private const val SUBCOMMAND_SET_KO = "생성"
+        private const val SUBCOMMAND_SET_KO = "설정"
+        private const val SUBCOMMAND_SET_LEGACY_KO = "생성"
         private const val SUBCOMMAND_SET_EN = "set"
         private const val SUBCOMMAND_TODAY_KO = "오늘"
         private const val SUBCOMMAND_TODAY_EN = "today"

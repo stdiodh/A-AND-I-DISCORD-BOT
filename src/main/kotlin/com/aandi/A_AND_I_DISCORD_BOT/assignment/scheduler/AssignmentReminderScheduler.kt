@@ -24,7 +24,6 @@ class AssignmentReminderScheduler(
     private val clock: Clock,
     @Value("\${assignment.reminder.grace-hours:24}") private val graceHours: Long,
     @Value("\${assignment.reminder.max-per-tick:20}") private val maxPerTick: Int,
-    @Value("\${assignment.reminder.pre-scan-hours:24}") private val preScanHours: Long,
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -35,9 +34,8 @@ class AssignmentReminderScheduler(
         repeat(safeMax) {
             val nowUtc = Instant.now(clock)
             val graceStartUtc = nowUtc.minus(graceHours, ChronoUnit.HOURS)
-            val scanEndUtc = nowUtc.plus(preScanHours, ChronoUnit.HOURS)
             val processed = transactionTemplate.execute {
-                processOne(nowUtc, graceStartUtc, scanEndUtc)
+                processOne(nowUtc, graceStartUtc)
             } ?: false
             if (!processed) {
                 return
@@ -45,24 +43,15 @@ class AssignmentReminderScheduler(
         }
     }
 
-    private fun processOne(nowUtc: Instant, graceStartUtc: Instant, scanEndUtc: Instant): Boolean {
-        val closingTask = assignmentTaskService.lockNextDueClosingTask(nowUtc, graceStartUtc)
-        if (closingTask != null) {
-            return processTaskWithAction(closingTask, PendingAction.CloseDue, nowUtc)
-        }
-
-        val initialTask = assignmentTaskService.lockNextInitialReminderTask(nowUtc, graceStartUtc)
-        if (initialTask != null) {
-            return processTaskWithAction(initialTask, PendingAction.InitialReminder, nowUtc)
-        }
-
-        val preTask = assignmentTaskService.lockNextPreReminderTask(nowUtc, scanEndUtc, graceStartUtc)
+    private fun processOne(nowUtc: Instant, graceStartUtc: Instant): Boolean {
+        val nextTask = assignmentTaskService.lockNextReadyTask(nowUtc, graceStartUtc)
             ?: return false
-        val action = assignmentTaskService.nextPendingAction(preTask, nowUtc)
-        if (action is PendingAction.PreDueReminder) {
-            return processTaskWithAction(preTask, action, nowUtc)
+        val action = assignmentTaskService.nextPendingAction(nextTask, nowUtc)
+        if (action == PendingAction.None) {
+            assignmentTaskService.refreshNextFireAt(nextTask.id, nowUtc)
+            return true
         }
-        return false
+        return processTaskWithAction(nextTask, action, nowUtc)
     }
 
     private fun processTaskWithAction(
